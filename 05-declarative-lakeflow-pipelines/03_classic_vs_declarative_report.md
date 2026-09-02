@@ -62,10 +62,10 @@
 * **Loss of Low-Level Control**: The engine abstracts execution and internal state storage. You cannot easily inject custom RDD operations, custom `foreachBatch` writers to legacy non-Delta databases, or fine-tune individual streaming micro-batch boundaries.
 * **Engine Opacity on Failures**: When issues occur (such as Unity Catalog workspace restrictions or file system permissions), error traces are deeply nested within DLT engine internals rather than a direct line of Python code.
 
-### The Cost Reality: Serverless & DBU Overhead
-* **Not automatically cheaper**: While Serverless compute eliminates cluster boot times (seconds vs. 5+ minutes), it carries an Advanced DLT DBU surcharge (typically `1.2x – 1.5x` higher DBU rate per compute hour).
-* **Unpredictable spend risk**(the worst, although probably less problematic in high load projects(same as serverless compute)): Dynamic autoscaling on unmonitored streaming sources can cause unexpected cost spikes compared to a fixed-size general-purpose cluster.
-* **Rule of thumb**(I would assume, but I might be wrong): Use declarative pipelines for standard, predictable Medallion workloads where massive developer time savings justify the DBU rate. Stick to classic Spark when you need custom sink connectors, non-standard orchestration, or strict hard-capped compute budgets.
+### The Cost Reality: Serverless vs. General Purpose Clusters
+* **Serverless is not automatically cheaper**: While Serverless compute eliminates startup times, it carries an Advanced DLT DBU surcharge (`1.2x – 1.5x`).
+* **Unpredictable spend risk**: Dynamic autoscaling on unmonitored streaming sources can cause unexpected cost spikes compared to running on a fixed-size general-purpose cluster.
+* **Production Decision**: We explicitly configure `serverless: false` for production to run on standard cluster compute nodes without the serverless markup, ensuring predictable billing. In comparison to jsut running regular code in serverless, here we dont have access to this code which makes it harder to predict automatic scaling and costs.
 
 ---
 

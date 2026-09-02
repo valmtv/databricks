@@ -11,7 +11,6 @@ resources:
       channel: CURRENT
       continuous: false
       photon: true
-      serverless: true
       libraries:
         - file:
             path: ./01_bronze_ingestion.py
@@ -36,7 +35,7 @@ targets:
           configuration:
             pipeline.landing_path: "/Workspace/Users/${workspace.current_user.userName}/air_quality_landing/landing"
 
-  # Target 2: Azure Databricks Production with Unity Catalog
+  # Target 2: Azure Databricks Production with Unity Catalog (Classic DLT Compute, No Serverless)
   prod_azure:
     mode: production
     workspace:
@@ -45,7 +44,7 @@ targets:
     resources:
       pipelines:
         air_quality_lakeflow_pipeline:
-          serverless: true
+          serverless: false
           catalog: dbr_dev
           target: valeriimatviiv_silver
           configuration:
