@@ -1,0 +1,114 @@
+bundle:
+  name: nasdaq_lakeflow_pipeline
+
+include: []
+
+resources:
+  # ---------------------------------------------------------------------------
+  # 1. Declarative Lakeflow Pipeline (Bronze -> Silver -> Gold Star Schema)
+  # ---------------------------------------------------------------------------
+  pipelines:
+    nasdaq_market_radar_pipeline:
+      name: "[${bundle.target}] NASDAQ Market Radar Declarative Lakeflow Pipeline"
+      edition: ADVANCED
+      channel: CURRENT
+      continuous: false
+      photon: true
+      libraries:
+        - file:
+            path: ./02_bronze_ingestion.py
+        - file:
+            path: ./03_silver_transformations.py
+        - file:
+            path: ./04_gold_star_schema.py
+      configuration:
+        bundle.sourcePath: ${workspace.file_path}
+
+  # ---------------------------------------------------------------------------
+  # 2. End-to-End Orchestrated Workflow Job
+  # Chaining: Landing (01) -> Lakeflow Pipeline (02,03,04) -> Maintenance (07)
+  # ---------------------------------------------------------------------------
+  jobs:
+    nasdaq_daily_workflow:
+      name: "[${bundle.target}] NASDAQ Daily End-to-End Workflow"
+      tasks:
+        # Task 1: Fetch 5m intraday price ticks
+        - task_key: landing_price
+          notebook_task:
+            notebook_path: ./01_landing/01d_landing_nasdaq_price.ipynb
+
+        # Task 2: Fetch Finnhub news articles (in parallel with prices)
+        - task_key: landing_news
+          notebook_task:
+            notebook_path: ./01_landing/01e_landing_finnhub_news.ipynb
+
+        # Task 3: Run Declarative Lakeflow Pipeline once landing completes
+        - task_key: lakeflow_pipeline
+          depends_on:
+            - task_key: landing_price
+            - task_key: landing_news
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.nasdaq_market_radar_pipeline.id}
+
+targets:
+  # Target 1: Databricks Free Trial Edition (Serverless Workspace with Unity Catalog)
+  dev_free:
+    mode: development
+    default: true
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+    resources:
+      pipelines:
+        nasdaq_market_radar_pipeline:
+          serverless: true
+          catalog: workspace
+          target: default
+          configuration:
+            pipeline.landing_price_path: "/Workspace/Users/${workspace.current_user.userName}/nasdaq_landing/landing/nasdaq_price"
+            pipeline.landing_news_path: "/Workspace/Users/${workspace.current_user.userName}/nasdaq_landing/landing/finnhub_news"
+      jobs:
+        nasdaq_daily_workflow:
+          tasks:
+            - task_key: landing_price
+              notebook_task:
+                base_parameters:
+                  catalog: workspace
+                  target_date: "2026-08-28"
+                  landing_override_path: "/Workspace/Users/${workspace.current_user.userName}/nasdaq_landing/landing/nasdaq_price"
+            - task_key: landing_news
+              notebook_task:
+                base_parameters:
+                  catalog: workspace
+                  target_date: "2026-08-28"
+                  landing_override_path: "/Workspace/Users/${workspace.current_user.userName}/nasdaq_landing/landing/finnhub_news"
+
+  # Target 2: Azure Databricks Production with Unity Catalog (Classic DLT Compute)
+  prod_azure:
+    mode: production
+    workspace:
+      host: https://adb-7405604503619901.1.azuredatabricks.net
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+    resources:
+      pipelines:
+        nasdaq_market_radar_pipeline:
+          serverless: false
+          catalog: dbr_dev
+          target: valeriimatviiv_gold
+          configuration:
+            pipeline.landing_price_path: "/Volumes/dbr_dev/valeriimatviiv_bronze/market_radar_landing/landing/nasdaq_price"
+            pipeline.landing_news_path: "/Volumes/dbr_dev/valeriimatviiv_bronze/market_radar_landing/landing/finnhub_news"
+      jobs:
+        nasdaq_daily_workflow:
+          tasks:
+            - task_key: landing_price
+              notebook_task:
+                base_parameters:
+                  catalog: dbr_dev
+                  target_date: "2026-08-28"
+                  landing_override_path: "/Volumes/dbr_dev/valeriimatviiv_bronze/market_radar_landing/landing/nasdaq_price"
+            - task_key: landing_news
+              notebook_task:
+                base_parameters:
+                  catalog: dbr_dev
+                  target_date: "2026-08-28"
+                  landing_override_path: "/Volumes/dbr_dev/valeriimatviiv_bronze/market_radar_landing/landing/finnhub_news"
