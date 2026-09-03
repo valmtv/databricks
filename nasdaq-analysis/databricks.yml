@@ -37,7 +37,7 @@ resources:
           notebook_task:
             notebook_path: ./01_landing/01d_landing_nasdaq_price.ipynb
 
-        # Task 2: Fetch Finnhub news articles (in parallel with prices)
+        # Task 2: Fetch Finnhub / Yahoo real news articles (in parallel with prices)
         - task_key: landing_news
           notebook_task:
             notebook_path: ./01_landing/01e_landing_finnhub_news.ipynb
