@@ -144,8 +144,12 @@ def silver_air_quality_enriched():
 
 ---
 
-## 6. Bundle Deployment Command
+## 6. Bundle Deployment Commands
 
 ```bash
+# Free / Dev Target:
 databricks bundle deploy -t dev_free && databricks bundle run air_quality_lakeflow_pipeline -t dev_free
+
+# Azure Production Target (Unity Catalog):
+databricks bundle deploy -t prod_azure && databricks bundle run air_quality_lakeflow_pipeline -t prod_azure
 ```
