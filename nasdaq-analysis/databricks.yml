@@ -50,6 +50,13 @@ resources:
           pipeline_task:
             pipeline_id: ${resources.pipelines.nasdaq_market_radar_pipeline.id}
 
+        # Task 4: Apply Unity Catalog Governance (RLS/CLS) once pipeline completes
+        - task_key: governance_rls_cls
+          depends_on:
+            - task_key: lakeflow_pipeline
+          notebook_task:
+            notebook_path: ./05_governance_rls_cls.sql
+
 targets:
   # Target 1: Databricks Free Trial Edition (Serverless Workspace with Unity Catalog)
   dev_free:
@@ -58,6 +65,11 @@ targets:
     workspace:
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
     resources:
+      dashboards:
+        nasdaq_market_radar_dashboard:
+          display_name: "[${bundle.target}] NASDAQ Market Radar: Catalyst Intelligence & Alpha Observatory"
+          file_path: ./06_dashboard/nasdaq_market_radar.lvdash.json
+          warehouse_id: 2035b157781cb38f
       pipelines:
         nasdaq_market_radar_pipeline:
           serverless: true
@@ -73,16 +85,23 @@ targets:
               notebook_task:
                 base_parameters:
                   catalog: workspace
-                  target_date: "2026-08-28"
+                  start_date: "2026-08-01"
+                  end_date: "2026-08-03"
                   landing_override_path: "/Workspace/Users/${workspace.current_user.userName}/nasdaq_landing/landing/nasdaq_price"
             - task_key: landing_news
               notebook_task:
                 base_parameters:
                   catalog: workspace
-                  target_date: "2026-08-28"
+                  start_date: "2026-08-01"
+                  end_date: "2026-08-03"
                   landing_override_path: "/Workspace/Users/${workspace.current_user.userName}/nasdaq_landing/landing/finnhub_news"
+            - task_key: governance_rls_cls
+              notebook_task:
+                base_parameters:
+                  catalog: workspace
+                  schema: default
 
-  # Target 2: Azure Databricks Production with Unity Catalog (Classic DLT Compute)
+  # Target 2: Azure Databricks Production with Unity Catalog (Classic Cluster GP1, Zero Serverless)
   prod_azure:
     mode: production
     workspace:
@@ -101,14 +120,30 @@ targets:
         nasdaq_daily_workflow:
           tasks:
             - task_key: landing_price
+              existing_cluster_id: 0702-132442-toro5spu
               notebook_task:
                 base_parameters:
                   catalog: dbr_dev
-                  target_date: "2026-08-28"
+                  schema: valeriimatviiv_bronze
+                  volume: market_radar_landing
+                  start_date: "2026-08-01"
+                  end_date: "2026-08-03"
                   landing_override_path: "/Volumes/dbr_dev/valeriimatviiv_bronze/market_radar_landing/landing/nasdaq_price"
             - task_key: landing_news
+              existing_cluster_id: 0702-132442-toro5spu
               notebook_task:
                 base_parameters:
                   catalog: dbr_dev
-                  target_date: "2026-08-28"
+                  schema: valeriimatviiv_bronze
+                  volume: market_radar_landing
+                  secret_scope: valerii-matviiv-scope
+                  secret_key: finnhub-api-key
+                  start_date: "2026-08-01"
+                  end_date: "2026-08-03"
                   landing_override_path: "/Volumes/dbr_dev/valeriimatviiv_bronze/market_radar_landing/landing/finnhub_news"
+            - task_key: governance_rls_cls
+              existing_cluster_id: 0702-132442-toro5spu
+              notebook_task:
+                base_parameters:
+                  catalog: dbr_dev
+                  schema: valeriimatviiv_gold
