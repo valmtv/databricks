@@ -7,10 +7,13 @@ resources:
   pipelines:
     air_quality_lakeflow_pipeline:
       name: "[${bundle.target}] Air Quality Lakeflow Declarative Pipeline"
-      edition: ADVANCED
+      edition: PRO
       channel: CURRENT
       continuous: false
       photon: true
+      clusters:
+        - label: default
+          num_workers: 1
       libraries:
         - file:
             path: ./01_bronze_ingestion.py
