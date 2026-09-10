@@ -1,0 +1,422 @@
+#!/usr/bin/env python3
+"""
+Air Quality AI/BI Dashboard (Lakeview) Definition Generator
+Generates air_quality_executive_bi.lvdash.json for Databricks AI/BI Dashboards.
+"""
+
+import json
+import os
+
+def generate_dashboard():
+    dashboard = {
+        "datasets": [
+            {
+                "name": "ds_kpi_summary",
+                "displayName": "Executive Air Quality KPI Summary",
+                "queryLines": [
+                    "SELECT \n",
+                    "    COUNT(DISTINCT station_id) AS total_monitoring_stations,\n",
+                    "    ROUND(AVG(us_aqi), 1) AS global_avg_aqi,\n",
+                    "    MAX(us_aqi) AS peak_recorded_aqi,\n",
+                    "    ROUND(100.0 * SUM(CASE WHEN is_who_pm25_exceeded THEN 1 ELSE 0 END) / COUNT(*), 1) AS who_pm25_exceedance_pct,\n",
+                    "    ROUND(100.0 * SUM(CASE WHEN us_aqi <= 50 THEN 1 ELSE 0 END) / COUNT(*), 1) AS safe_air_hours_pct\n",
+                    "FROM fact_air_quality_hourly;"
+                ]
+            },
+            {
+                "name": "ds_city_rankings",
+                "displayName": "City Air Quality & Pollutant Benchmarks",
+                "queryLines": [
+                    "SELECT \n",
+                    "    city,\n",
+                    "    country,\n",
+                    "    ROUND(AVG(us_aqi), 1) AS avg_aqi,\n",
+                    "    MAX(us_aqi) AS max_aqi,\n",
+                    "    ROUND(AVG(pm2_5), 2) AS avg_pm25,\n",
+                    "    ROUND(AVG(pm10), 2) AS avg_pm10,\n",
+                    "    ROUND(AVG(ozone), 2) AS avg_ozone,\n",
+                    "    ROUND(AVG(nitrogen_dioxide), 2) AS avg_no2,\n",
+                    "    COUNT(*) AS total_readings,\n",
+                    "    ROUND(100.0 * SUM(CASE WHEN is_who_pm25_exceeded THEN 1 ELSE 0 END) / COUNT(*), 1) AS who_exceedance_pct\n",
+                    "FROM fact_air_quality_hourly\n",
+                    "GROUP BY city, country\n",
+                    "ORDER BY avg_aqi DESC;"
+                ]
+            },
+            {
+                "name": "ds_hourly_trends",
+                "displayName": "Hourly Air Quality & PM2.5 Trajectories",
+                "queryLines": [
+                    "SELECT \n",
+                    "    recorded_at,\n",
+                    "    city,\n",
+                    "    country,\n",
+                    "    us_aqi,\n",
+                    "    pm2_5,\n",
+                    "    rolling_24h_avg_pm25,\n",
+                    "    pm10,\n",
+                    "    ozone,\n",
+                    "    nitrogen_dioxide,\n",
+                    "    aqi_category,\n",
+                    "    aqi_color_code\n",
+                    "FROM fact_air_quality_hourly\n",
+                    "ORDER BY recorded_at ASC;"
+                ]
+            },
+            {
+                "name": "ds_aqi_distribution",
+                "displayName": "EPA AQI Severity Tier Distribution",
+                "queryLines": [
+                    "SELECT \n",
+                    "    aqi_category,\n",
+                    "    aqi_color_code,\n",
+                    "    COUNT(*) AS observation_count,\n",
+                    "    ROUND(100.0 * COUNT(*) / (SELECT COUNT(*) FROM fact_air_quality_hourly), 1) AS time_share_pct\n",
+                    "FROM fact_air_quality_hourly\n",
+                    "GROUP BY aqi_category, aqi_color_code\n",
+                    "ORDER BY observation_count DESC;"
+                ]
+            },
+            {
+                "name": "ds_daily_summary",
+                "displayName": "Daily City Summary & Regulatory Compliance",
+                "queryLines": [
+                    "SELECT \n",
+                    "    city,\n",
+                    "    country,\n",
+                    "    calendar_date,\n",
+                    "    observation_count,\n",
+                    "    avg_us_aqi,\n",
+                    "    max_us_aqi,\n",
+                    "    avg_pm2_5,\n",
+                    "    hours_safe,\n",
+                    "    hours_moderate,\n",
+                    "    hours_unhealthy,\n",
+                    "    hours_who_exceeded,\n",
+                    "    unhealthy_hours_pct,\n",
+                    "    compliance_grade\n",
+                    "FROM fact_city_daily_summary\n",
+                    "ORDER BY calendar_date DESC, avg_us_aqi DESC;"
+                ]
+            },
+            {
+                "name": "ds_governed_telemetry",
+                "displayName": "Governed Hourly Telemetry (RLS/CLS Enforced)",
+                "queryLines": [
+                    "SELECT \n",
+                    "    city,\n",
+                    "    country,\n",
+                    "    recorded_at,\n",
+                    "    us_aqi,\n",
+                    "    aqi_category,\n",
+                    "    pm2_5,\n",
+                    "    pm10,\n",
+                    "    carbon_monoxide,\n",
+                    "    sulphur_dioxide,\n",
+                    "    ozone,\n",
+                    "    nitrogen_dioxide,\n",
+                    "    rolling_24h_avg_pm25,\n",
+                    "    is_who_pm25_exceeded\n",
+                    "FROM fact_air_quality_hourly_governed\n",
+                    "ORDER BY recorded_at DESC;"
+                ]
+            }
+        ],
+        "pages": [
+            {
+                "name": "page_executive_observatory",
+                "displayName": "Global Air Quality Observatory",
+                "layout": [
+                    # Row 0: KPI Cards
+                    {
+                        "widget": {
+                            "name": "kpi_total_stations",
+                            "queries": [{
+                                "name": "main_query",
+                                "query": {
+                                    "datasetName": "ds_kpi_summary",
+                                    "fields": [{"name": "total_monitoring_stations", "expression": "`total_monitoring_stations`"}],
+                                    "disaggregated": True
+                                }
+                            }],
+                            "spec": {
+                                "frame": {"showTitle": True, "title": "Active Stations"},
+                                "version": 2,
+                                "widgetType": "counter",
+                                "encodings": {"value": {"fieldName": "total_monitoring_stations", "rowNumber": 0}},
+                                "data": {"queryName": "main_query"}
+                            }
+                        },
+                        "position": {"x": 0, "y": 0, "width": 2, "height": 3}
+                    },
+                    {
+                        "widget": {
+                            "name": "kpi_mean_aqi",
+                            "queries": [{
+                                "name": "main_query",
+                                "query": {
+                                    "datasetName": "ds_kpi_summary",
+                                    "fields": [{"name": "global_avg_aqi", "expression": "`global_avg_aqi`"}],
+                                    "disaggregated": True
+                                }
+                            }],
+                            "spec": {
+                                "frame": {"showTitle": True, "title": "Global Mean AQI"},
+                                "version": 2,
+                                "widgetType": "counter",
+                                "encodings": {"value": {"fieldName": "global_avg_aqi", "rowNumber": 0}},
+                                "data": {"queryName": "main_query"}
+                            }
+                        },
+                        "position": {"x": 2, "y": 0, "width": 2, "height": 3}
+                    },
+                    {
+                        "widget": {
+                            "name": "kpi_peak_aqi",
+                            "queries": [{
+                                "name": "main_query",
+                                "query": {
+                                    "datasetName": "ds_kpi_summary",
+                                    "fields": [{"name": "peak_recorded_aqi", "expression": "`peak_recorded_aqi`"}],
+                                    "disaggregated": True
+                                }
+                            }],
+                            "spec": {
+                                "frame": {"showTitle": True, "title": "Peak Recorded AQI"},
+                                "version": 2,
+                                "widgetType": "counter",
+                                "encodings": {"value": {"fieldName": "peak_recorded_aqi", "rowNumber": 0}},
+                                "data": {"queryName": "main_query"}
+                            }
+                        },
+                        "position": {"x": 4, "y": 0, "width": 2, "height": 3}
+                    },
+                    {
+                        "widget": {
+                            "name": "kpi_who_exceedance",
+                            "queries": [{
+                                "name": "main_query",
+                                "query": {
+                                    "datasetName": "ds_kpi_summary",
+                                    "fields": [{"name": "who_pm25_exceedance_pct", "expression": "`who_pm25_exceedance_pct`"}],
+                                    "disaggregated": True
+                                }
+                            }],
+                            "spec": {
+                                "frame": {"showTitle": True, "title": "WHO PM2.5 Exceedance Rate (%)"},
+                                "version": 2,
+                                "widgetType": "counter",
+                                "encodings": {"value": {"fieldName": "who_pm25_exceedance_pct", "rowNumber": 0}},
+                                "data": {"queryName": "main_query"}
+                            }
+                        },
+                        "position": {"x": 6, "y": 0, "width": 3, "height": 3}
+                    },
+                    {
+                        "widget": {
+                            "name": "kpi_safe_hours",
+                            "queries": [{
+                                "name": "main_query",
+                                "query": {
+                                    "datasetName": "ds_kpi_summary",
+                                    "fields": [{"name": "safe_air_hours_pct", "expression": "`safe_air_hours_pct`"}],
+                                    "disaggregated": True
+                                }
+                            }],
+                            "spec": {
+                                "frame": {"showTitle": True, "title": "Healthy Air Hours Ratio (%)"},
+                                "version": 2,
+                                "widgetType": "counter",
+                                "encodings": {"value": {"fieldName": "safe_air_hours_pct", "rowNumber": 0}},
+                                "data": {"queryName": "main_query"}
+                            }
+                        },
+                        "position": {"x": 9, "y": 0, "width": 3, "height": 3}
+                    },
+                    # Row 1: Charts
+                    {
+                        "widget": {
+                            "name": "chart_city_ranking",
+                            "queries": [{
+                                "name": "main_query",
+                                "query": {
+                                    "datasetName": "ds_city_rankings",
+                                    "fields": [
+                                        {"name": "city", "expression": "`city`"},
+                                        {"name": "avg_aqi", "expression": "`avg_aqi`"},
+                                        {"name": "avg_pm25", "expression": "`avg_pm25`"}
+                                    ],
+                                    "disaggregated": False
+                                }
+                            }],
+                            "spec": {
+                                "frame": {"showTitle": True, "title": "City Air Quality Index Ranking"},
+                                "version": 3,
+                                "widgetType": "bar",
+                                "encodings": {
+                                    "x": {"fieldName": "avg_aqi", "displayName": "Average AQI", "scale": {"type": "quantitative"}},
+                                    "y": {"fieldName": "city", "displayName": "City", "scale": {"type": "categorical"}},
+                                    "color": {"fieldName": "avg_pm25", "displayName": "PM2.5 (ug/m3)", "scale": {"type": "quantitative"}}
+                                },
+                                "data": {"queryName": "main_query"}
+                            }
+                        },
+                        "position": {"x": 0, "y": 3, "width": 6, "height": 9}
+                    },
+                    {
+                        "widget": {
+                            "name": "chart_aqi_distribution",
+                            "queries": [{
+                                "name": "main_query",
+                                "query": {
+                                    "datasetName": "ds_aqi_distribution",
+                                    "fields": [
+                                        {"name": "aqi_category", "expression": "`aqi_category`"},
+                                        {"name": "observation_count", "expression": "`observation_count`"}
+                                    ],
+                                    "disaggregated": False
+                                }
+                            }],
+                            "spec": {
+                                "frame": {"showTitle": True, "title": "EPA AQI Category Breakdown"},
+                                "version": 3,
+                                "widgetType": "bar",
+                                "encodings": {
+                                    "x": {"fieldName": "observation_count", "displayName": "Hours Observed", "scale": {"type": "quantitative"}},
+                                    "y": {"fieldName": "aqi_category", "displayName": "EPA Category", "scale": {"type": "categorical"}}
+                                },
+                                "data": {"queryName": "main_query"}
+                            }
+                        },
+                        "position": {"x": 6, "y": 3, "width": 6, "height": 9}
+                    },
+                    # Row 2: Time Series Chart
+                    {
+                        "widget": {
+                            "name": "chart_hourly_trends",
+                            "queries": [{
+                                "name": "main_query",
+                                "query": {
+                                    "datasetName": "ds_hourly_trends",
+                                    "fields": [
+                                        {"name": "recorded_at", "expression": "`recorded_at`"},
+                                        {"name": "pm2_5", "expression": "`pm2_5`"},
+                                        {"name": "city", "expression": "`city`"}
+                                    ],
+                                    "disaggregated": True
+                                }
+                            }],
+                            "spec": {
+                                "frame": {"showTitle": True, "title": "Hourly PM2.5 Concentrations Over Time"},
+                                "version": 3,
+                                "widgetType": "line",
+                                "encodings": {
+                                    "x": {"fieldName": "recorded_at", "displayName": "Timestamp", "scale": {"type": "temporal"}},
+                                    "y": {"fieldName": "pm2_5", "displayName": "PM2.5 (ug/m3)", "scale": {"type": "quantitative"}},
+                                    "series": {"fieldName": "city", "displayName": "City", "scale": {"type": "categorical"}}
+                                },
+                                "data": {"queryName": "main_query"}
+                            }
+                        },
+                        "position": {"x": 0, "y": 12, "width": 12, "height": 9}
+                    },
+                    # Row 3: Daily Summary Table
+                    {
+                        "widget": {
+                            "name": "table_daily_summary",
+                            "queries": [{
+                                "name": "main_query",
+                                "query": {
+                                    "datasetName": "ds_daily_summary",
+                                    "fields": [
+                                        {"name": "city", "expression": "`city`"},
+                                        {"name": "country", "expression": "`country`"},
+                                        {"name": "calendar_date", "expression": "`calendar_date`"},
+                                        {"name": "observation_count", "expression": "`observation_count`"},
+                                        {"name": "avg_us_aqi", "expression": "`avg_us_aqi`"},
+                                        {"name": "avg_pm2_5", "expression": "`avg_pm2_5`"},
+                                        {"name": "hours_safe", "expression": "`hours_safe`"},
+                                        {"name": "hours_unhealthy", "expression": "`hours_unhealthy`"},
+                                        {"name": "compliance_grade", "expression": "`compliance_grade`"}
+                                    ],
+                                    "disaggregated": True
+                                }
+                            }],
+                            "spec": {
+                                "frame": {"showTitle": True, "title": "Daily Regulatory Compliance Scorecard"},
+                                "version": 2,
+                                "widgetType": "table",
+                                "encodings": {
+                                    "columns": [
+                                        {"fieldName": "city", "displayName": "City"},
+                                        {"fieldName": "country", "displayName": "Country"},
+                                        {"fieldName": "calendar_date", "displayName": "Date"},
+                                        {"fieldName": "avg_us_aqi", "displayName": "Avg AQI"},
+                                        {"fieldName": "avg_pm2_5", "displayName": "Avg PM2.5"},
+                                        {"fieldName": "hours_safe", "displayName": "Safe Hours"},
+                                        {"fieldName": "hours_unhealthy", "displayName": "Unhealthy Hours"},
+                                        {"fieldName": "compliance_grade", "displayName": "Grade"}
+                                    ]
+                                },
+                                "data": {"queryName": "main_query"}
+                            }
+                        },
+                        "position": {"x": 0, "y": 21, "width": 12, "height": 8}
+                    },
+                    # Row 4: Governed Hourly Telemetry Table
+                    {
+                        "widget": {
+                            "name": "table_governed_telemetry",
+                            "queries": [{
+                                "name": "main_query",
+                                "query": {
+                                    "datasetName": "ds_governed_telemetry",
+                                    "fields": [
+                                        {"name": "city", "expression": "`city`"},
+                                        {"name": "country", "expression": "`country`"},
+                                        {"name": "recorded_at", "expression": "`recorded_at`"},
+                                        {"name": "us_aqi", "expression": "`us_aqi`"},
+                                        {"name": "aqi_category", "expression": "`aqi_category`"},
+                                        {"name": "pm2_5", "expression": "`pm2_5`"},
+                                        {"name": "carbon_monoxide", "expression": "`carbon_monoxide`"},
+                                        {"name": "sulphur_dioxide", "expression": "`sulphur_dioxide`"},
+                                        {"name": "rolling_24h_avg_pm25", "expression": "`rolling_24h_avg_pm25`"}
+                                    ],
+                                    "disaggregated": True
+                                }
+                            }],
+                            "spec": {
+                                "frame": {"showTitle": True, "title": "Governed Hourly Telemetry Log (RLS Regional Filter & CLS Masking)"},
+                                "version": 2,
+                                "widgetType": "table",
+                                "encodings": {
+                                    "columns": [
+                                        {"fieldName": "city", "displayName": "City"},
+                                        {"fieldName": "country", "displayName": "Country"},
+                                        {"fieldName": "recorded_at", "displayName": "Timestamp"},
+                                        {"fieldName": "us_aqi", "displayName": "US AQI"},
+                                        {"fieldName": "aqi_category", "displayName": "Category"},
+                                        {"fieldName": "pm2_5", "displayName": "PM2.5"},
+                                        {"fieldName": "carbon_monoxide", "displayName": "CO (CLS Masked)"},
+                                        {"fieldName": "sulphur_dioxide", "displayName": "SO2 (CLS Masked)"},
+                                        {"fieldName": "rolling_24h_avg_pm25", "displayName": "Rolling 24h PM2.5"}
+                                    ]
+                                },
+                                "data": {"queryName": "main_query"}
+                            }
+                        },
+                        "position": {"x": 0, "y": 29, "width": 12, "height": 8}
+                    }
+                ],
+                "pageType": "PAGE_TYPE_CANVAS"
+            }
+        ]
+    }
+    
+    output_path = os.path.join(os.path.dirname(__file__), "air_quality_executive_bi.lvdash.json")
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(dashboard, f, indent=2)
+    print(f"[SUCCESS] AI/BI Dashboard definition generated at: {output_path}")
+
+if __name__ == "__main__":
+    generate_dashboard()
