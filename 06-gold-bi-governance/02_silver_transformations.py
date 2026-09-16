@@ -10,9 +10,14 @@ import sys
 import os
 
 # Ensure package is importable in both local IDE and DLT cluster execution
-current_dir = os.path.dirname(os.path.abspath(__file__))
+try:
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+except NameError:
+    current_dir = os.getcwd()
+
 if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
+
 
 try:
     import dlt

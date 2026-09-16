@@ -1,13 +1,15 @@
+-- Databricks notebook source
 -- ============================================================================
 -- Lab 07: Data Quality Scorecard, Metrics & Automated Alerting Queries
 -- ============================================================================
--- Catalog: workspace (dev_free) / dbr_dev (prod_azure)
--- Schema:  default / valeriimatviiv_gold
---
--- PURPOSE:
--- Provides analytical views and automated alerting queries across the 5 DQ dimensions:
--- Completeness, Uniqueness, Validity, Consistency, and Timeliness.
--- ============================================================================
+-- Catalog: workspace (dev_free)
+-- Schema:  default
+CREATE WIDGET TEXT catalog DEFAULT "workspace";
+CREATE WIDGET TEXT schema DEFAULT "default";
+
+USE CATALOG IDENTIFIER(:catalog);
+USE SCHEMA IDENTIFIER(:schema);
+
 
 -- ----------------------------------------------------------------------------
 -- 1. Data Quality Executive Scorecard View
