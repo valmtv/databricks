@@ -3,8 +3,11 @@
 -- Automated Data Quality, Volume Drop & Environmental Hazard Alerts
 -- =============================================================================
 
-USE CATALOG workspace;
-USE SCHEMA default;
+CREATE WIDGET TEXT catalog DEFAULT "workspace";
+CREATE WIDGET TEXT schema DEFAULT "default";
+
+USE CATALOG IDENTIFIER(:catalog);
+USE SCHEMA IDENTIFIER(:schema);
 
 -- -----------------------------------------------------------------------------
 -- ALERT 1: Telemetry Data Volume Drop Alert (Ingestion Pipeline Health)

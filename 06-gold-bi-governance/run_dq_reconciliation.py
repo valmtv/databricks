@@ -21,7 +21,7 @@ def run_reconciliation(spark, catalog: str = "workspace", schema: str = "default
     Returns True if all checks pass, False if any check fails.
     """
     print("=" * 80)
-    print(f"🔬 RUNNING MEDALLION DATA QUALITY RECONCILIATION SUITE")
+    print(f"RUNNING MEDALLION DATA QUALITY RECONCILIATION SUITE")
     print(f"   Target Catalog: {catalog} | Schema: {schema}")
     print("=" * 80)
 
@@ -61,12 +61,12 @@ def run_reconciliation(spark, catalog: str = "workspace", schema: str = "default
             "discrepancy": discrepancy
         }
 
-        status = "✅ PASS" if passed_c1 else "❌ FAIL"
+        status = "[PASS]" if passed_c1 else "[FAIL]"
         print(f"  {status} -> Bronze: {bronze_count} | Silver Valid: {silver_valid_count} | Quarantine: {quarantine_count} (Discrepancy: {discrepancy})")
         if not passed_c1:
             all_passed = False
     except Exception as e:
-        print(f"  ⚠️  Check 1 skipped/errored: {e}")
+        print(f"  [WARN] Check 1 skipped/errored: {e}")
         results["row_count_conservation"] = {"passed": False, "error": str(e)}
 
     # -------------------------------------------------------------------------
@@ -88,12 +88,12 @@ def run_reconciliation(spark, catalog: str = "workspace", schema: str = "default
             "daily_summed_observations": summed_observations
         }
 
-        status = "✅ PASS" if passed_c2 else "❌ FAIL"
+        status = "[PASS]" if passed_c2 else "[FAIL]"
         print(f"  {status} -> Hourly Facts Count: {hourly_fact_count} | Daily Observation Sum: {summed_observations}")
         if not passed_c2:
             all_passed = False
     except Exception as e:
-        print(f"  ⚠️  Check 2 skipped/errored: {e}")
+        print(f"  [WARN] Check 2 skipped/errored: {e}")
         results["grain_rollup_conservation"] = {"passed": False, "error": str(e)}
 
     # -------------------------------------------------------------------------
@@ -134,12 +134,12 @@ def run_reconciliation(spark, catalog: str = "workspace", schema: str = "default
             "orphan_category_fk": orphan_cat
         }
 
-        status = "✅ PASS" if passed_c3 else "❌ FAIL"
+        status = "[PASS]" if passed_c3 else "[FAIL]"
         print(f"  {status} -> Orphan Station SK: {orphan_city} | Orphan Date SK: {orphan_date} | Orphan Category SK: {orphan_cat}")
         if not passed_c3:
             all_passed = False
     except Exception as e:
-        print(f"  ⚠️  Check 3 skipped/errored: {e}")
+        print(f"  [WARN] Check 3 skipped/errored: {e}")
         results["referential_integrity"] = {"passed": False, "error": str(e)}
 
     # -------------------------------------------------------------------------
@@ -160,12 +160,12 @@ def run_reconciliation(spark, catalog: str = "workspace", schema: str = "default
             "future_dated_rows": future_rows
         }
 
-        status = "✅ PASS" if passed_c4 else "❌ FAIL"
+        status = "[PASS]" if passed_c4 else "[FAIL]"
         print(f"  {status} -> Future-dated rows: {future_rows}")
         if not passed_c4:
             all_passed = False
     except Exception as e:
-        print(f"  ⚠️  Check 4 skipped/errored: {e}")
+        print(f"  [WARN] Check 4 skipped/errored: {e}")
         results["temporal_freshness"] = {"passed": False, "error": str(e)}
 
     # -------------------------------------------------------------------------
@@ -173,9 +173,9 @@ def run_reconciliation(spark, catalog: str = "workspace", schema: str = "default
     # -------------------------------------------------------------------------
     print("\n" + "=" * 80)
     if all_passed:
-        print("🎯 FINAL RECONCILIATION RESULT: ALL CHECKS PASSED (Pipeline Trustworthy)")
+        print("FINAL RECONCILIATION RESULT: ALL CHECKS PASSED (Pipeline Trustworthy)")
     else:
-        print("🚨 FINAL RECONCILIATION RESULT: FAILED CHECKS DETECTED (Gate Blocked)")
+        print("FINAL RECONCILIATION RESULT: FAILED CHECKS DETECTED (Gate Blocked)")
     print("=" * 80)
 
     return all_passed

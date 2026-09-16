@@ -10,7 +10,7 @@ resources:
   pipelines:
     air_quality_lakeflow_pipeline:
       name: "[${bundle.target}] Air Quality Full Medallion (Bronze-Silver-Gold) Lakeflow Pipeline"
-      edition: PRO
+      edition: ADVANCED
       channel: CURRENT
       continuous: false
       photon: true
@@ -44,19 +44,40 @@ resources:
           pipeline_task:
             pipeline_id: ${resources.pipelines.air_quality_lakeflow_pipeline.id}
 
-        # Task 3: Apply Unity Catalog Governance (RLS/CLS)
-        - task_key: governance_rls_cls
+        # Task 3: Lab 07 - Delta Lake Table-Level Constraints Defense-in-Depth
+        - task_key: delta_table_constraints
           depends_on:
             - task_key: lakeflow_pipeline
           notebook_task:
+            notebook_path: ./08_delta_table_constraints.py
+
+        # Task 4: Apply Unity Catalog Governance (RLS/CLS)
+        - task_key: governance_rls_cls
+          depends_on:
+            - task_key: delta_table_constraints
+          notebook_task:
             notebook_path: ./04_governance_rls_cls.sql
 
-        # Task 4: Automated Data Quality & Volume Drop Alert Check
+        # Task 5: Automated Data Quality & Volume Drop Alert Check
         - task_key: alerts_monitoring
           depends_on:
             - task_key: governance_rls_cls
           notebook_task:
             notebook_path: ./05_alerts_and_monitoring.sql
+
+        # Task 6: Lab 07 - Data Quality Scorecard & Alerts
+        - task_key: dq_scorecard_and_alerts
+          depends_on:
+            - task_key: alerts_monitoring
+          notebook_task:
+            notebook_path: ./09_dq_scorecard_and_alerts.sql
+
+        # Task 7: Lab 07 - Medallion Cross-Layer Reconciliation Audit Gate
+        - task_key: dq_reconciliation_audit
+          depends_on:
+            - task_key: dq_scorecard_and_alerts
+          notebook_task:
+            notebook_path: ./run_dq_reconciliation.py
 
 targets:
   # Target 1: Databricks Free Trial Edition (Serverless Workspace with Unity Catalog)
@@ -88,7 +109,27 @@ targets:
                   schema: default
                   volume: air_quality_landing
                   custom_landing_path: "/Workspace/Users/${workspace.current_user.userName}/air_quality_landing"
+            - task_key: delta_table_constraints
+              notebook_task:
+                base_parameters:
+                  catalog: workspace
+                  schema: default
             - task_key: governance_rls_cls
+              notebook_task:
+                base_parameters:
+                  catalog: workspace
+                  schema: default
+            - task_key: alerts_monitoring
+              notebook_task:
+                base_parameters:
+                  catalog: workspace
+                  schema: default
+            - task_key: dq_scorecard_and_alerts
+              notebook_task:
+                base_parameters:
+                  catalog: workspace
+                  schema: default
+            - task_key: dq_reconciliation_audit
               notebook_task:
                 base_parameters:
                   catalog: workspace
@@ -131,6 +172,12 @@ targets:
                   schema: valeriimatviiv_bronze
                   volume: air_quality_landing
                   custom_landing_path: "/Volumes/dbr_dev/valeriimatviiv_bronze/air_quality_landing"
+            - task_key: delta_table_constraints
+              existing_cluster_id: 0702-132442-toro5spu
+              notebook_task:
+                base_parameters:
+                  catalog: dbr_dev
+                  schema: valeriimatviiv_gold
             - task_key: governance_rls_cls
               existing_cluster_id: 0702-132442-toro5spu
               notebook_task:
@@ -138,6 +185,18 @@ targets:
                   catalog: dbr_dev
                   schema: valeriimatviiv_gold
             - task_key: alerts_monitoring
+              existing_cluster_id: 0702-132442-toro5spu
+              notebook_task:
+                base_parameters:
+                  catalog: dbr_dev
+                  schema: valeriimatviiv_gold
+            - task_key: dq_scorecard_and_alerts
+              existing_cluster_id: 0702-132442-toro5spu
+              notebook_task:
+                base_parameters:
+                  catalog: dbr_dev
+                  schema: valeriimatviiv_gold
+            - task_key: dq_reconciliation_audit
               existing_cluster_id: 0702-132442-toro5spu
               notebook_task:
                 base_parameters:

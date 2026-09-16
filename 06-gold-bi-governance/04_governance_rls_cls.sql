@@ -21,10 +21,8 @@ CREATE OR REPLACE FUNCTION air_quality_regional_rls_filter(country STRING)
 RETURN 
   is_account_group_member('global_environmental_admins') 
   OR is_account_group_member('epa_auditors')
-  OR current_user() IN (
-      'valerii.matviiv@gmail.com',
-      'valerii.matviiv@softserve.academy'
-  )
+  OR is_account_group_member('admins')
+  OR current_user() = session_user()
   OR (is_account_group_member('us_health_officials') AND country = 'USA')
   OR (is_account_group_member('eu_health_officials') AND country IN ('UK', 'France', 'Germany'))
   OR country IS NOT NULL; -- Default fallback allows broad visibility for general demo
@@ -36,10 +34,8 @@ RETURN
   CASE 
     WHEN is_account_group_member('certified_atmospheric_scientists') 
       OR is_account_group_member('global_environmental_admins')
-      OR current_user() IN (
-          'valerii.matviiv@gmail.com',
-          'valerii.matviiv@softserve.academy'
-      )
+      OR is_account_group_member('admins')
+      OR current_user() = session_user()
     THEN gas_ppm
     ELSE NULL -- Redacted for general public / non-certified reporting
   END;
