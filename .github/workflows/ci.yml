@@ -1,0 +1,46 @@
+name: CI - Medallion Unit Tests & Bundle Validation
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-and-validate:
+    name: Run Unit Tests & Validate Bundle
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run Transformation & Data Quality Unit Tests
+        run: |
+          echo "=== Running Air Quality Medallion Unit Tests ==="
+          python -m unittest discover -s 06-gold-bi-governance/tests -p "test_*.py" -v
+
+      - name: Install Databricks CLI
+        if: ${{ secrets.DATABRICKS_DEV_FREE_TOKEN != '' }}
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+
+      - name: Validate Databricks Asset Bundle (dev_free)
+        if: ${{ secrets.DATABRICKS_DEV_FREE_TOKEN != '' }}
+        env:
+          DATABRICKS_HOST: "https://dbc-3d34d2aa-8db9.cloud.databricks.com"
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_DEV_FREE_TOKEN }}
+        run: |
+          cd 06-gold-bi-governance
+          databricks bundle validate -t dev_free
+
+      - name: Notice on Databricks Asset Bundle Validation
+        if: ${{ secrets.DATABRICKS_DEV_FREE_TOKEN == '' }}
+        run: |
+          echo "ℹ️  Unit tests passed. To also enable live Databricks Asset Bundle validation in GitHub Actions, add 'DATABRICKS_DEV_FREE_TOKEN' to your GitHub Repository Secrets."
+

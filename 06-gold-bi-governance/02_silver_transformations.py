@@ -1,8 +1,18 @@
 """
-Silver Layer Transformation Module
-----------------------------------
-Cleanses streaming telemetry, enriches with reference metadata, and enforces data quality rules.
+Silver Layer Transformation Module (Lakeflow Declarative Pipeline)
+------------------------------------------------------------------
+Cleanses streaming telemetry, routes invalid records to a quarantine table,
+enriches valid telemetry with EPA reference standards, and tracks quality metrics.
+Refactored to import pure transformation logic from `air_quality_transforms`.
 """
+
+import sys
+import os
+
+# Ensure package is importable in both local IDE and DLT cluster execution
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
 
 try:
     import dlt
@@ -10,8 +20,57 @@ except ImportError:
     import pyspark.pipelines as dlt
 
 from pyspark.sql import functions as F
+from air_quality_transforms.cleansing import clean_silver_air_quality_df
+from air_quality_transforms.enrichment import enrich_with_aqi_reference
+from air_quality_transforms.quarantine import build_quarantine_predicate_spark
 
 
+# -----------------------------------------------------------------------------
+# 1. Silver Quarantine Table (Enterprise Zero-Silent-Loss Pattern)
+# -----------------------------------------------------------------------------
+@dlt.table(
+    name="silver_air_quality_quarantine",
+    comment="Quarantined air quality observations failing completeness, validity, or timeliness checks",
+    table_properties={
+        "quality": "silver_quarantine",
+        "delta.autoOptimize.optimizeWrite": "true",
+        "delta.autoOptimize.autoCompact": "true"
+    }
+)
+def silver_air_quality_quarantine():
+    """
+    Captures corrupted, out-of-bounds, or future-dated records without dropping them silently.
+    Provides diagnostic error reasons and quarantine timestamps for data engineering review.
+    """
+    df_raw = dlt.read_stream("bronze_air_quality_raw")
+    df_cleaned = clean_silver_air_quality_df(df_raw)
+    is_quarantine_cond = build_quarantine_predicate_spark()
+
+    return (
+        df_cleaned
+        .filter(is_quarantine_cond)
+        .withColumn(
+            "quarantine_reason",
+            F.concat_ws(" | ",
+                F.when(F.col("event_id").isNull() | (F.trim(F.col("event_id")) == ""), F.lit("MISSING_EVENT_ID")),
+                F.when(F.col("station_id").isNull() | (F.trim(F.col("station_id")) == ""), F.lit("MISSING_STATION_ID")),
+                F.when(F.col("city").isNull() | (F.trim(F.col("city")) == ""), F.lit("MISSING_CITY")),
+                F.when(F.col("recorded_at").isNull(), F.lit("NULL_TIMESTAMP")),
+                F.when(F.col("recorded_at") > F.current_timestamp(), F.lit("FUTURE_TIMESTAMP")),
+                F.when((F.col("latitude") < -90.0) | (F.col("latitude") > 90.0), F.lit("LATITUDE_OUT_OF_BOUNDS")),
+                F.when((F.col("longitude") < -180.0) | (F.col("longitude") > 180.0), F.lit("LONGITUDE_OUT_OF_BOUNDS")),
+                F.when((F.col("pm2_5").isNotNull() & (F.col("pm2_5") < 0.0)), F.lit("NEGATIVE_PM25")),
+                F.when((F.col("pm10").isNotNull() & (F.col("pm10") < 0.0)), F.lit("NEGATIVE_PM10")),
+                F.when((F.col("us_aqi").isNotNull() & ((F.col("us_aqi") < 0) | (F.col("us_aqi") > 500))), F.lit("AQI_OUT_OF_BOUNDS"))
+            )
+        )
+        .withColumn("quarantined_at", F.current_timestamp())
+    )
+
+
+# -----------------------------------------------------------------------------
+# 2. Clean Enriched Silver Table (With Lakeflow Quality Expectations)
+# -----------------------------------------------------------------------------
 @dlt.table(
     name="silver_air_quality_enriched",
     comment="Cleansed, validated, and EPA-classified streaming air quality observations",
@@ -22,7 +81,7 @@ from pyspark.sql import functions as F
     }
 )
 @dlt.expect("valid_observation_timestamp", "recorded_at IS NOT NULL AND recorded_at <= current_timestamp()")
-@dlt.expect_or_drop(
+@dlt.expect(
     "valid_pollutant_ranges",
     """
     (pm2_5 IS NULL OR pm2_5 >= 0.0) AND
@@ -34,68 +93,16 @@ from pyspark.sql import functions as F
 )
 @dlt.expect_or_fail("valid_primary_keys", "event_id IS NOT NULL AND station_id IS NOT NULL AND city IS NOT NULL")
 def silver_air_quality_enriched():
+    """
+    Downstream-ready clean telemetry.
+    Filters out quarantine candidates and enriches with EPA advisory metadata.
+    """
     df_raw = dlt.read_stream("bronze_air_quality_raw")
     df_ref = dlt.read("bronze_aqi_reference")
 
-    df_cleaned = (
-        df_raw
-        .withColumn("recorded_at", F.to_timestamp(F.col("timestamp")))
-        .withColumn("pm2_5", F.col("pm2_5").cast("double"))
-        .withColumn("pm10", F.col("pm10").cast("double"))
-        .withColumn("carbon_monoxide", F.col("carbon_monoxide").cast("double"))
-        .withColumn("nitrogen_dioxide", F.col("nitrogen_dioxide").cast("double"))
-        .withColumn("sulphur_dioxide", F.col("sulphur_dioxide").cast("double"))
-        .withColumn("ozone", F.col("ozone").cast("double"))
-        .withColumn("us_aqi", F.col("us_aqi").cast("integer"))
-        .withColumn("latitude", F.col("latitude").cast("double"))
-        .withColumn("longitude", F.col("longitude").cast("double"))
-        .select(
-            "event_id",
-            "station_id",
-            "city",
-            "country",
-            "latitude",
-            "longitude",
-            "recorded_at",
-            "pm2_5",
-            "pm10",
-            "carbon_monoxide",
-            "nitrogen_dioxide",
-            "sulphur_dioxide",
-            "ozone",
-            "us_aqi",
-            "_ingestion_timestamp"
-        )
-    )
+    df_cleaned = clean_silver_air_quality_df(df_raw)
+    is_quarantine_cond = build_quarantine_predicate_spark()
 
-    df_enriched = (
-        df_cleaned.join(
-            df_ref,
-            (df_cleaned["us_aqi"] >= df_ref["aqi_min"]) & (df_cleaned["us_aqi"] <= df_ref["aqi_max"]),
-            how="left"
-        )
-        .select(
-            df_cleaned["event_id"],
-            df_cleaned["station_id"],
-            df_cleaned["city"],
-            df_cleaned["country"],
-            df_cleaned["latitude"],
-            df_cleaned["longitude"],
-            df_cleaned["recorded_at"],
-            df_cleaned["pm2_5"],
-            df_cleaned["pm10"],
-            df_cleaned["carbon_monoxide"],
-            df_cleaned["nitrogen_dioxide"],
-            df_cleaned["sulphur_dioxide"],
-            df_cleaned["ozone"],
-            df_cleaned["us_aqi"],
-            F.coalesce(df_ref["category"], F.lit("Unknown")).alias("aqi_category"),
-            F.coalesce(df_ref["color_code"], F.lit("Gray")).alias("aqi_color_code"),
-            df_ref["health_implication"],
-            df_ref["cautionary_statement"],
-            df_cleaned["_ingestion_timestamp"],
-            F.current_timestamp().alias("_transformed_timestamp")
-        )
-    )
-
-    return df_enriched
+    # Route only validated records to clean silver
+    df_valid = df_cleaned.filter(~is_quarantine_cond)
+    return enrich_with_aqi_reference(df_valid, df_ref)
