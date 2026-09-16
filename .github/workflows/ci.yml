@@ -23,9 +23,13 @@ jobs:
           python-version: '3.11'
 
       - name: Run Transformation & Data Quality Unit Tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}/06-gold-bi-governance
         run: |
           echo "=== Running Air Quality Medallion Unit Tests ==="
           python -m unittest discover -s 06-gold-bi-governance/tests -p "test_*.py" -v
+
+
 
       - name: Install Databricks CLI
         if: env.DATABRICKS_TOKEN != ''
