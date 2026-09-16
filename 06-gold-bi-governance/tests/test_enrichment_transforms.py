@@ -6,7 +6,16 @@ and standard color code assignment across boundary intervals.
 """
 
 import unittest
+import sys
+import os
+
+# Ensure parent directory is in sys.path
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+
 from air_quality_transforms.enrichment import (
+
     classify_aqi_category,
     get_color_code_for_aqi,
     EPA_AQI_TIERS,

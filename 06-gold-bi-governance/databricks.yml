@@ -14,9 +14,6 @@ resources:
       channel: CURRENT
       continuous: false
       photon: true
-      clusters:
-        - label: default
-          num_workers: 1
       libraries:
         - file:
             path: ./01_bronze_ingestion.py
@@ -146,4 +143,7 @@ targets:
                 base_parameters:
                   catalog: dbr_dev
                   schema: valeriimatviiv_gold
+
+
+
 

@@ -6,8 +6,17 @@ timestamp freshness checks, and type casting.
 """
 
 import unittest
+import sys
+import os
 from datetime import datetime, timezone, timedelta
+
+# Ensure parent directory is in sys.path
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+
 from air_quality_transforms.cleansing import (
+
     validate_coordinate_bounds,
     validate_pollutant_ranges,
     validate_timestamp_freshness,
