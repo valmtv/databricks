@@ -11,7 +11,7 @@ jobs:
     name: Run Unit Tests & Validate Bundle
     runs-on: ubuntu-latest
     env:
-      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_DEV_FREE_TOKEN }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
 
     steps:
       - name: Checkout Code
@@ -47,4 +47,4 @@ jobs:
       - name: Notice on Databricks Asset Bundle Validation
         if: env.DATABRICKS_TOKEN == ''
         run: |
-          echo "ℹ️  Unit tests passed. To also enable live Databricks Asset Bundle validation in GitHub Actions, add 'DATABRICKS_DEV_FREE_TOKEN' to your GitHub Repository Secrets."
+          echo "[INFO] Unit tests passed. To also enable live Databricks Asset Bundle validation in GitHub Actions, add 'DATABRICKS_DEV_FREE_TOKEN' to your GitHub Repository Secrets."
