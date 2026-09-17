@@ -4,14 +4,14 @@ Automated data quality framework, pure transformation unit testing, enterprise q
 
 ---
 
-## Deployment & Artifact Links
+## Deployment Artifacts
 
-| Asset | Environment | ID / Details | Link |
+| Asset | Environment | Identifier / Details | Reference |
 |---|---|---|---|
-| **Lakeflow Pipeline** | Prod (Azure Databricks) | `d4426afc-621d-4588-8af2-92563b8a0a3e` | [Open Pipeline](https://adb-7405604503619901.1.azuredatabricks.net/pipelines/d4426afc-621d-4588-8af2-92563b8a0a3e) |
-| **Workflow Job** | Prod (Azure Databricks) | `594339360399957` | [Open Job](https://adb-7405604503619901.1.azuredatabricks.net/jobs/594339360399957) |
-| **SQL Telemetry Alert** | Prod (Azure Databricks) | `4174171081479852` | [Open Alert](https://adb-7405604503619901.1.azuredatabricks.net/sql/alerts/4174171081479852) |
-| **Workspace Folder** | Prod (Azure Databricks) | `lab06_gold_bi_governance/prod_azure` | |
+| **Lakeflow Pipeline** | Prod (Azure Databricks) | `d4426afc-621d-4588-8af2-92563b8a0a3e` | Air Quality Full Medallion Pipeline |
+| **Workflow Job** | Prod (Azure Databricks) | `594339360399957` | Air Quality Daily End-to-End Workflow |
+| **SQL Telemetry Alert** | Prod (Azure Databricks) | `4174171081479852` | Air Quality Volume Drop & Anomaly Alert |
+| **Workspace Target** | Prod (Azure Databricks) | `lab06_gold_bi_governance/prod_azure` | Unity Catalog Lakehouse |
 | **GitHub Pull Request #3** | GitHub | Branch `lab7` | [Open PR #3](https://github.com/valmtv/databricks/pull/3) |
 | **GitHub Repository** | GitHub | `06-gold-bi-governance` | [View Code](https://github.com/valmtv/databricks/tree/lab7/06-gold-bi-governance) |
 
