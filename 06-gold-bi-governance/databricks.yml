@@ -86,6 +86,13 @@ resources:
           notebook_task:
             notebook_path: ./run_dq_reconciliation.py
 
+        # Task 9: Lab 07 - Databricks Labs DQX Declarative Quality Suite
+        - task_key: dqx_quality_engine
+          depends_on:
+            - task_key: dq_reconciliation_audit
+          notebook_task:
+            notebook_path: ./10_dqx_quality_engine.py
+
 targets:
   # Target 1: Databricks Free Trial Edition (Serverless Workspace with Unity Catalog)
   dev_free:
@@ -142,6 +149,11 @@ targets:
                   catalog: workspace
                   schema: default
             - task_key: dq_reconciliation_audit
+              notebook_task:
+                base_parameters:
+                  catalog: workspace
+                  schema: default
+            - task_key: dqx_quality_engine
               notebook_task:
                 base_parameters:
                   catalog: workspace
@@ -208,6 +220,12 @@ targets:
                   catalog: dbr_dev
                   schema: valeriimatviiv_gold
             - task_key: dq_reconciliation_audit
+              existing_cluster_id: 0702-132442-toro5spu
+              notebook_task:
+                base_parameters:
+                  catalog: dbr_dev
+                  schema: valeriimatviiv_gold
+            - task_key: dqx_quality_engine
               existing_cluster_id: 0702-132442-toro5spu
               notebook_task:
                 base_parameters:
