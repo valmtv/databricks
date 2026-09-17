@@ -37,42 +37,49 @@ resources:
           notebook_task:
             notebook_path: ./00_setup_landing_data.ipynb
 
-        # Task 2: Declarative Lakeflow Pipeline (Bronze -> Silver -> Gold)
-        - task_key: lakeflow_pipeline
+        # Task 2: Generate conformed calendar date dimension via recursive CTE
+        - task_key: generate_dim_date
           depends_on:
             - task_key: setup_landing_data
+          notebook_task:
+            notebook_path: ./00b_generate_dim_date.sql
+
+        # Task 3: Declarative Lakeflow Pipeline (Bronze -> Silver -> Gold)
+        - task_key: lakeflow_pipeline
+          depends_on:
+            - task_key: generate_dim_date
           pipeline_task:
             pipeline_id: ${resources.pipelines.air_quality_lakeflow_pipeline.id}
 
-        # Task 3: Lab 07 - Delta Lake Table-Level Constraints Defense-in-Depth
+        # Task 4: Lab 07 - Delta Lake Table-Level Constraints Defense-in-Depth
         - task_key: delta_table_constraints
           depends_on:
             - task_key: lakeflow_pipeline
           notebook_task:
             notebook_path: ./08_delta_table_constraints.py
 
-        # Task 4: Apply Unity Catalog Governance (RLS/CLS)
+        # Task 5: Apply Unity Catalog Governance (RLS/CLS)
         - task_key: governance_rls_cls
           depends_on:
             - task_key: delta_table_constraints
           notebook_task:
             notebook_path: ./04_governance_rls_cls.sql
 
-        # Task 5: Automated Data Quality & Volume Drop Alert Check
+        # Task 6: Automated Data Quality & Volume Drop Alert Check
         - task_key: alerts_monitoring
           depends_on:
             - task_key: governance_rls_cls
           notebook_task:
             notebook_path: ./05_alerts_and_monitoring.sql
 
-        # Task 6: Lab 07 - Data Quality Scorecard & Alerts
+        # Task 7: Lab 07 - Data Quality Scorecard & Alerts
         - task_key: dq_scorecard_and_alerts
           depends_on:
             - task_key: alerts_monitoring
           notebook_task:
             notebook_path: ./09_dq_scorecard_and_alerts.sql
 
-        # Task 7: Lab 07 - Medallion Cross-Layer Reconciliation Audit Gate
+        # Task 8: Lab 07 - Medallion Cross-Layer Reconciliation Audit Gate
         - task_key: dq_reconciliation_audit
           depends_on:
             - task_key: dq_scorecard_and_alerts
@@ -109,6 +116,11 @@ targets:
                   schema: default
                   volume: air_quality_landing
                   custom_landing_path: "/Workspace/Users/${workspace.current_user.userName}/air_quality_landing"
+            - task_key: generate_dim_date
+              notebook_task:
+                base_parameters:
+                  catalog: workspace
+                  schema: default
             - task_key: delta_table_constraints
               notebook_task:
                 base_parameters:
@@ -135,7 +147,7 @@ targets:
                   catalog: workspace
                   schema: default
 
-  # Target 2: Azure Databricks Production with Unity Catalog (Classic DLT Compute, GP1 Cluster)
+  # Target 2: Azure Databricks Production with Unity Catalog (Zero Serverless, GP1 Cluster Reuse)
   prod_azure:
     mode: production
     workspace:
@@ -154,13 +166,6 @@ targets:
           target: valeriimatviiv_gold
           configuration:
             pipeline.landing_path: "/Volumes/dbr_dev/valeriimatviiv_bronze/air_quality_landing/landing"
-          clusters:
-            - label: default
-              autoscale:
-                min_workers: 1
-                max_workers: 1
-                mode: ENHANCED
-              node_type_id: Standard_D4ds_v5
       jobs:
         air_quality_daily_workflow:
           tasks:
@@ -172,6 +177,12 @@ targets:
                   schema: valeriimatviiv_bronze
                   volume: air_quality_landing
                   custom_landing_path: "/Volumes/dbr_dev/valeriimatviiv_bronze/air_quality_landing"
+            - task_key: generate_dim_date
+              existing_cluster_id: 0702-132442-toro5spu
+              notebook_task:
+                base_parameters:
+                  catalog: dbr_dev
+                  schema: valeriimatviiv_gold
             - task_key: delta_table_constraints
               existing_cluster_id: 0702-132442-toro5spu
               notebook_task:

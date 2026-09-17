@@ -75,17 +75,9 @@ def dim_city():
     return build_dim_city_df(df_silver, meta_df)
 
 
-@dlt.table(
-    name="dim_calendar_date",
-    comment="Conformed calendar date dimension table for temporal rollups and slicing",
-    table_properties={"quality": "gold"}
-)
-def dim_calendar_date():
-    """
-    Conformed date dimension providing calendar hierarchy (year, quarter, month, day of week).
-    """
-    df_silver = dlt.read("silver_air_quality_enriched")
-    return build_dim_calendar_date_df(df_silver)
+# Note: dim_calendar_date is an enterprise conformed dimension generated once
+# via recursive CTE in 00b_generate_dim_date.sql to minimize streaming pipeline
+# shuffle, I/O, and compute overhead.
 
 
 @dlt.table(
