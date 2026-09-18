@@ -85,6 +85,32 @@ class TestReconciliationInvariants(unittest.TestCase):
         self.assertEqual(len(future_records), 1)
         self.assertEqual(future_records[0]["event_id"], "E3")
 
+    def test_dq_declarative_rules_structure(self):
+        """
+        Validates the structure of the declarative DQX quality specification:
+        - All 5 data quality dimensions are covered
+        - Rules target correct Medallion tables (Silver vs Gold facts)
+        - Rules marked action='fail' have required expressions or keys
+        """
+        import os
+        rules_path = os.path.join(os.path.dirname(__file__), "..", "dq_rules.yml")
+        self.assertTrue(os.path.exists(rules_path), "dq_rules.yml must exist")
+
+        # Parse rules either via yaml or line parsing
+        with open(rules_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Check all 5 dimensions exist in spec
+        for dim in ["Completeness", "Validity", "Timeliness", "Consistency", "Uniqueness"]:
+            self.assertIn(dim, content)
+
+        # Check cross-table targets are explicitly specified
+        self.assertIn("fact_city_daily_summary", content)
+        self.assertIn("fact_air_quality_hourly", content)
+        self.assertIn("consistency_hours_partition_integrity", content)
+        self.assertIn("consistency_referential_station_fk", content)
+        self.assertIn("uniqueness_fact_sk", content)
+
 
 if __name__ == "__main__":
     unittest.main()

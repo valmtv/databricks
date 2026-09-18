@@ -113,6 +113,7 @@ rules:
 
   - name: "consistency_referential_station_fk"
     description: "Every station_sk in fact_air_quality_hourly must exist in dim_city"
+    target_table: "fact_air_quality_hourly"
     rule_type: "foreign_key"
     foreign_key_column: "station_sk"
     reference_table: "dim_city"
