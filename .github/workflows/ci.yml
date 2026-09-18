@@ -5,13 +5,16 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   test-and-validate:
     name: Run Unit Tests & Validate Bundle
     runs-on: ubuntu-latest
     env:
-      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      # Exclusively use DATABRICKS_DEV_FREE_TOKEN
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_DEV_FREE_TOKEN }}
+      DATABRICKS_HOST: "https://dbc-3d34d2aa-8db9.cloud.databricks.com"
 
     steps:
       - name: Checkout Code
@@ -26,10 +29,8 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}/06-gold-bi-governance
         run: |
-          echo "=== Running Air Quality Medallion Unit Tests ==="
+          echo "=== Running Air Quality Medallion Unit Tests (Local Runner) ==="
           python -m unittest discover -s 06-gold-bi-governance/tests -p "test_*.py" -v
-
-
 
       - name: Install Databricks CLI
         if: env.DATABRICKS_TOKEN != ''
@@ -38,13 +39,12 @@ jobs:
 
       - name: Validate Databricks Asset Bundle (dev_free)
         if: env.DATABRICKS_TOKEN != ''
-        env:
-          DATABRICKS_HOST: "https://dbc-3d34d2aa-8db9.cloud.databricks.com"
         run: |
           cd 06-gold-bi-governance
+          echo "=== Validating Asset Bundle for dev_free ==="
           databricks bundle validate -t dev_free
 
       - name: Notice on Databricks Asset Bundle Validation
         if: env.DATABRICKS_TOKEN == ''
         run: |
-          echo "[INFO] Unit tests passed. To also enable live Databricks Asset Bundle validation in GitHub Actions, add 'DATABRICKS_DEV_FREE_TOKEN' to your GitHub Repository Secrets."
+          echo "[INFO] Local unit tests passed. To enable live Databricks Asset Bundle validation against dev_free in GitHub Actions, ensure 'DATABRICKS_DEV_FREE_TOKEN' is set in GitHub Repository Secrets."
