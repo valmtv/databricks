@@ -122,41 +122,34 @@ Implements declarative rules across all 5 data quality dimensions:
 
 ## 9. Orchestrated Pipeline Execution & Resource Optimization
 
-The complete pipeline is orchestrated via Databricks Asset Bundles in `databricks.yml`:
+### Pipeline Architecture & Orchestration
+
+The project is structured into three decoupled Databricks Asset Bundle workflows to separate infrastructure DDL, ETL processing, and quality auditing:
+
 ```
-setup_landing_data 
-        |
-        v
-generate_dim_date (Recursive CTE Dimension)
-        |
-        v
-lakeflow_pipeline (Bronze -> Silver -> Gold Star Schema)
-        |
-        v
-delta_table_constraints (Storage Layer Constraints)
-        |
-        v
-governance_rls_cls (Unity Catalog Row/Column Security)
-        |
-        v
-alerts_monitoring (Automated Alert Queries)
-        |
-        v
-dq_scorecard_and_alerts (Aggregated Quality Scorecard)
-        |
-        v
-dq_reconciliation_audit (Automated Mathematical Gate)
-        |
-        v
-dqx_quality_engine (Databricks Labs DQX Declarative Suite)
+1. Infrastructure & Governance Setup (Run-Once / DDL / Migrations)
+   generate_dim_date ──> delta_table_constraints ──> governance_rls_cls ──> dq_scorecard_and_alerts
+
+2. Data Loading Pipeline (Stateless ETL / Scheduled)
+   setup_landing_data ──> air_quality_lakeflow_pipeline (Bronze -> Silver -> Gold)
+
+3. Quality & Audit Suite (Verification & Reconciliation)
+   dq_reconciliation_audit ──> dqx_quality_engine ──> alerts_monitoring
 ```
 
-### Resource Optimization Highlights (matching `nasdaq-analysis` pattern):
-- **Target `prod_azure`**: Zero serverless in prod. All batch notebook tasks reuse the active GP1 cluster (`0702-132442-toro5spu`), avoiding expensive new VM startups and Azure quota consumption.
-- **Target `dev_free`**: Fully automated on Serverless Unity Catalog with single-concurrency queue safety.
-- **Lean Lakeflow Execution**: Unnecessary custom VM allocations removed; dimension tables generated out-of-band to maximize pipeline efficiency.
+#### Workflow Specifications:
+1. **Infrastructure & Governance (`air_quality_infrastructure_setup`)**:
+   - Provisions static reference calendar dimensions (`00b_generate_dim_date.sql`), enforces Delta Lake table constraints (`08_delta_table_constraints.py`), applies Unity Catalog Row Filters & Column Masks (`04_governance_rls_cls.sql`), and deploys quality scorecard views (`09_dq_scorecard_and_alerts.sql`).
+   - Run command: `databricks bundle run air_quality_infrastructure_setup`
 
-To run the full orchestrated workflow:
-```bash
-databricks bundle run air_quality_daily_workflow
-```
+2. **Data Pipeline (`air_quality_data_pipeline`)**:
+   - Pure stateless ETL. Stages landing telemetry and triggers the declarative Medallion Lakeflow pipeline (`01_bronze_ingestion.py` $\to$ `02_silver_transformations.py` $\to$ `03_gold_star_schema.py`).
+   - Run command: `databricks bundle run air_quality_data_pipeline`
+
+3. **Quality & Audit Suite (`air_quality_quality_and_audit_suite`)**:
+   - Independent verification suite. Executes cross-layer conservation reconciliation (`run_dq_reconciliation.py`), evaluates Databricks Labs DQX rule engine (`10_dqx_quality_engine.py`), and executes volume SLA alerts (`05_alerts_and_monitoring.sql`).
+   - Run command: `databricks bundle run air_quality_quality_and_audit_suite`
+
+### Target Environment Profiles:
+- **`dev_free`**: Fully automated on Serverless compute with Unity Catalog.
+- **`prod_azure`**: Reuses the active GP1 cluster (`0702-132442-toro5spu`) with classic cluster task libraries (`databricks-labs-dqx==0.8.0`), avoiding serverless or extra VM provisioning overhead.

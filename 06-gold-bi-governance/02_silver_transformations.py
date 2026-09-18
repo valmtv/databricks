@@ -100,7 +100,7 @@ def silver_air_quality_quarantine():
 def silver_air_quality_enriched():
     """
     Downstream-ready clean telemetry.
-    Filters out quarantine candidates and enriches with EPA advisory metadata.
+    Filters out quarantine candidates, deduplicates on event_id, and enriches with EPA advisory metadata.
     """
     df_raw = dlt.read_stream("bronze_air_quality_raw")
     df_ref = dlt.read("bronze_aqi_reference")
@@ -108,6 +108,6 @@ def silver_air_quality_enriched():
     df_cleaned = clean_silver_air_quality_df(df_raw)
     is_quarantine_cond = build_quarantine_predicate_spark()
 
-    # Route only validated records to clean silver
-    df_valid = df_cleaned.filter(~is_quarantine_cond)
+    # Route only validated records to clean silver with streaming primary key deduplication
+    df_valid = df_cleaned.filter(~is_quarantine_cond).dropDuplicates(["event_id"])
     return enrich_with_aqi_reference(df_valid, df_ref)
