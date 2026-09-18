@@ -1,0 +1,133 @@
+# =============================================================================
+# Databricks Labs DQX (Data Quality Framework) - Medallion Quality Specification
+# =============================================================================
+# This file provides declarative rule definitions for Databricks Labs DQX.
+# It externalizes data quality logic across the 5 dimensions of Data Quality.
+# =============================================================================
+
+version: "1.0"
+dataset: "air_quality_telemetry"
+target_layer: "silver_enriched"
+quarantine_table: "silver_air_quality_quarantine"
+
+# -----------------------------------------------------------------------------
+# Dimension 1: Completeness (Absence of Null or Empty Primary Keys)
+# -----------------------------------------------------------------------------
+rules:
+  - name: "completeness_event_id"
+    description: "Event ID is mandatory and must not be blank"
+    column: "event_id"
+    rule_type: "is_not_null_and_not_empty"
+    expression: "event_id IS NOT NULL AND trim(event_id) != ''"
+    action: "quarantine"
+    tag: "MISSING_EVENT_ID"
+
+  - name: "completeness_station_id"
+    description: "Sensor station identifier must be present"
+    column: "station_id"
+    rule_type: "is_not_null_and_not_empty"
+    expression: "station_id IS NOT NULL AND trim(station_id) != ''"
+    action: "quarantine"
+    tag: "MISSING_STATION_ID"
+
+  - name: "completeness_city"
+    description: "City attribute is mandatory for geographic rollups"
+    column: "city"
+    rule_type: "is_not_null_and_not_empty"
+    expression: "city IS NOT NULL AND trim(city) != ''"
+    action: "quarantine"
+    tag: "MISSING_CITY"
+
+  - name: "completeness_recorded_at"
+    description: "Observation timestamp must be non-null"
+    column: "recorded_at"
+    rule_type: "is_not_null"
+    expression: "recorded_at IS NOT NULL"
+    action: "quarantine"
+    tag: "NULL_TIMESTAMP"
+
+# -----------------------------------------------------------------------------
+# Dimension 2: Validity (Physical Bounds, Ranges & Formatting)
+# -----------------------------------------------------------------------------
+  - name: "validity_latitude_bounds"
+    description: "Geographic latitude must lie between -90.0 and +90.0 degrees"
+    column: "latitude"
+    rule_type: "range"
+    expression: "latitude >= -90.0 AND latitude <= 90.0"
+    action: "quarantine"
+    tag: "LATITUDE_OUT_OF_BOUNDS"
+
+  - name: "validity_longitude_bounds"
+    description: "Geographic longitude must lie between -180.0 and +180.0 degrees"
+    column: "longitude"
+    rule_type: "range"
+    expression: "longitude >= -180.0 AND longitude <= 180.0"
+    action: "quarantine"
+    tag: "LONGITUDE_OUT_OF_BOUNDS"
+
+  - name: "validity_pm25_non_negative"
+    description: "PM2.5 particulate concentration cannot be negative"
+    column: "pm2_5"
+    rule_type: "range"
+    expression: "pm2_5 IS NULL OR pm2_5 >= 0.0"
+    action: "quarantine"
+    tag: "NEGATIVE_PM25"
+
+  - name: "validity_pm10_non_negative"
+    description: "PM10 particulate concentration cannot be negative"
+    column: "pm10"
+    rule_type: "range"
+    expression: "pm10 IS NULL OR pm10 >= 0.0"
+    action: "quarantine"
+    tag: "NEGATIVE_PM10"
+
+  - name: "validity_us_aqi_scale"
+    description: "US EPA AQI index scale must reside within [0..500]"
+    column: "us_aqi"
+    rule_type: "range"
+    expression: "us_aqi IS NULL OR (us_aqi >= 0 AND us_aqi <= 500)"
+    action: "quarantine"
+    tag: "AQI_OUT_OF_BOUNDS"
+
+# -----------------------------------------------------------------------------
+# Dimension 3: Timeliness (Freshness & Clock-Skew Tolerance)
+# -----------------------------------------------------------------------------
+  - name: "timeliness_future_dated_check"
+    description: "Observation timestamp must not be ahead of current UTC time"
+    column: "recorded_at"
+    rule_type: "freshness"
+    expression: "recorded_at <= current_timestamp()"
+    action: "quarantine"
+    tag: "FUTURE_TIMESTAMP"
+
+# -----------------------------------------------------------------------------
+# Dimension 4: Consistency (Referential Integrity & Cross-Column Partitioning)
+# -----------------------------------------------------------------------------
+  - name: "consistency_hours_partition_integrity"
+    description: "Partitioned hours (safe + moderate + unhealthy) must not exceed total observation count"
+    rule_type: "cross_column"
+    target_table: "fact_city_daily_summary"
+    expression: "(hours_safe + hours_moderate + hours_unhealthy) <= observation_count"
+    action: "fail"
+    tag: "INVALID_HOURS_PARTITION"
+
+  - name: "consistency_referential_station_fk"
+    description: "Every station_sk in fact_air_quality_hourly must exist in dim_city"
+    target_table: "fact_air_quality_hourly"
+    rule_type: "foreign_key"
+    foreign_key_column: "station_sk"
+    reference_table: "dim_city"
+    reference_column: "station_sk"
+    action: "fail"
+    tag: "ORPHAN_STATION_FK"
+
+# -----------------------------------------------------------------------------
+# Dimension 5: Uniqueness (Primary & Surrogate Key Uniqueness)
+# -----------------------------------------------------------------------------
+  - name: "uniqueness_fact_sk"
+    description: "fact_sk must be unique across all hourly facts"
+    target_table: "fact_air_quality_hourly"
+    column: "fact_sk"
+    rule_type: "unique"
+    action: "fail"
+    tag: "DUPLICATE_FACT_SK"
