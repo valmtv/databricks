@@ -117,6 +117,7 @@ def fact_air_quality_hourly():
     
     return (
         with_features
+        .dropDuplicates(["fact_sk"])
         .select(
             "fact_sk",
             "station_sk",

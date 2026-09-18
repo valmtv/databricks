@@ -25,73 +25,86 @@ resources:
         bundle.sourcePath: ${workspace.file_path}
 
   # ---------------------------------------------------------------------------
-  # 2. End-to-End Orchestrated Workflow Job
-  # Chaining: Landing Setup -> Lakeflow Pipeline -> RLS/CLS Governance -> Alerts
+  # 2. Decoupled Workflow Jobs (Architecture: Infrastructure vs ETL vs Audits)
   # ---------------------------------------------------------------------------
   jobs:
-    air_quality_daily_workflow:
-      name: "[${bundle.target}] Air Quality Daily End-to-End Workflow"
+    # -------------------------------------------------------------------------
+    # LIFECYCLE 1: Infrastructure & Governance Setup (DDL / Run-Once / Migration)
+    # Provisions schema objects, Delta constraints, UC RLS/CLS, and scorecard views.
+    # -------------------------------------------------------------------------
+    air_quality_infrastructure_setup:
+      name: "[${bundle.target}] Air Quality Infrastructure & Governance Setup (DDL)"
       tasks:
-        # Task 1: Setup landing telemetry & EPA reference standards
-        - task_key: setup_landing_data
-          notebook_task:
-            notebook_path: ./00_setup_landing_data.ipynb
-
-        # Task 2: Generate conformed calendar date dimension via recursive CTE
+        # Task 1: Generate conformed calendar date dimension table
         - task_key: generate_dim_date
-          depends_on:
-            - task_key: setup_landing_data
           notebook_task:
             notebook_path: ./00b_generate_dim_date.sql
 
-        # Task 3: Declarative Lakeflow Pipeline (Bronze -> Silver -> Gold)
-        - task_key: lakeflow_pipeline
-          depends_on:
-            - task_key: generate_dim_date
-          pipeline_task:
-            pipeline_id: ${resources.pipelines.air_quality_lakeflow_pipeline.id}
-
-        # Task 4: Lab 07 - Delta Lake Table-Level Constraints Defense-in-Depth
+        # Task 2: Apply Delta Lake table-level invariants & check constraints
         - task_key: delta_table_constraints
           depends_on:
-            - task_key: lakeflow_pipeline
+            - task_key: generate_dim_date
           notebook_task:
             notebook_path: ./08_delta_table_constraints.py
 
-        # Task 5: Apply Unity Catalog Governance (RLS/CLS)
+        # Task 3: Apply Unity Catalog Governance (Row Filters & Column Masks)
         - task_key: governance_rls_cls
           depends_on:
             - task_key: delta_table_constraints
           notebook_task:
             notebook_path: ./04_governance_rls_cls.sql
 
-        # Task 6: Automated Data Quality & Volume Drop Alert Check
-        - task_key: alerts_monitoring
+        # Task 4: Deploy Data Quality Scorecard views & alert thresholds
+        - task_key: dq_scorecard_and_alerts
           depends_on:
             - task_key: governance_rls_cls
           notebook_task:
-            notebook_path: ./05_alerts_and_monitoring.sql
-
-        # Task 7: Lab 07 - Data Quality Scorecard & Alerts
-        - task_key: dq_scorecard_and_alerts
-          depends_on:
-            - task_key: alerts_monitoring
-          notebook_task:
             notebook_path: ./09_dq_scorecard_and_alerts.sql
 
-        # Task 8: Lab 07 - Medallion Cross-Layer Reconciliation Audit Gate
-        - task_key: dq_reconciliation_audit
+    # -------------------------------------------------------------------------
+    # LIFECYCLE 2: Pure Data Loading Pipeline (Stateless ETL / Scheduled)
+    # The actual data movement: only loads, cleans, and aggregates data.
+    # -------------------------------------------------------------------------
+    air_quality_data_pipeline:
+      name: "[${bundle.target}] Air Quality Data Loading Pipeline (ETL)"
+      tasks:
+        # Task 1: Stage landing telemetry data
+        - task_key: setup_landing_data
+          notebook_task:
+            notebook_path: ./00_setup_landing_data.ipynb
+
+        # Task 2: Declarative Lakeflow Pipeline (Bronze -> Silver -> Gold)
+        - task_key: lakeflow_pipeline
           depends_on:
-            - task_key: dq_scorecard_and_alerts
+            - task_key: setup_landing_data
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.air_quality_lakeflow_pipeline.id}
+
+    # -------------------------------------------------------------------------
+    # LIFECYCLE 3: Quality & Audit Suite (Verification, Reconciliation & DQX)
+    # Independent verification lifecycle: CI/CD test gates & operational audits.
+    # -------------------------------------------------------------------------
+    air_quality_quality_and_audit_suite:
+      name: "[${bundle.target}] Air Quality Quality & Reconciliation Audit Suite"
+      tasks:
+        # Task 1: Medallion Cross-Layer Reconciliation Audit Gate
+        - task_key: dq_reconciliation_audit
           notebook_task:
             notebook_path: ./run_dq_reconciliation.py
 
-        # Task 9: Lab 07 - Databricks Labs DQX Declarative Quality Suite
+        # Task 2: Databricks Labs DQX Declarative Quality Suite
         - task_key: dqx_quality_engine
           depends_on:
             - task_key: dq_reconciliation_audit
           notebook_task:
             notebook_path: ./10_dqx_quality_engine.py
+
+        # Task 3: Volume Drop & SLA Monitoring Alerts
+        - task_key: alerts_monitoring
+          depends_on:
+            - task_key: dqx_quality_engine
+          notebook_task:
+            notebook_path: ./05_alerts_and_monitoring.sql
 
 targets:
   # Target 1: Databricks Free Trial Edition (Serverless Workspace with Unity Catalog)
@@ -114,15 +127,9 @@ targets:
           configuration:
             pipeline.landing_path: "/Workspace/Users/${workspace.current_user.userName}/air_quality_landing/landing"
       jobs:
-        air_quality_daily_workflow:
+        # 1. Infrastructure Setup Job
+        air_quality_infrastructure_setup:
           tasks:
-            - task_key: setup_landing_data
-              notebook_task:
-                base_parameters:
-                  catalog: workspace
-                  schema: default
-                  volume: air_quality_landing
-                  custom_landing_path: "/Workspace/Users/${workspace.current_user.userName}/air_quality_landing"
             - task_key: generate_dim_date
               notebook_task:
                 base_parameters:
@@ -138,22 +145,37 @@ targets:
                 base_parameters:
                   catalog: workspace
                   schema: default
-            - task_key: alerts_monitoring
-              notebook_task:
-                base_parameters:
-                  catalog: workspace
-                  schema: default
             - task_key: dq_scorecard_and_alerts
               notebook_task:
                 base_parameters:
                   catalog: workspace
                   schema: default
+
+        # 2. Data Loading Pipeline Job
+        air_quality_data_pipeline:
+          tasks:
+            - task_key: setup_landing_data
+              notebook_task:
+                base_parameters:
+                  catalog: workspace
+                  schema: default
+                  volume: air_quality_landing
+                  custom_landing_path: "/Workspace/Users/${workspace.current_user.userName}/air_quality_landing"
+
+        # 3. Quality & Audit Suite Job
+        air_quality_quality_and_audit_suite:
+          tasks:
             - task_key: dq_reconciliation_audit
               notebook_task:
                 base_parameters:
                   catalog: workspace
                   schema: default
             - task_key: dqx_quality_engine
+              notebook_task:
+                base_parameters:
+                  catalog: workspace
+                  schema: default
+            - task_key: alerts_monitoring
               notebook_task:
                 base_parameters:
                   catalog: workspace
@@ -179,16 +201,9 @@ targets:
           configuration:
             pipeline.landing_path: "/Volumes/dbr_dev/valeriimatviiv_bronze/air_quality_landing/landing"
       jobs:
-        air_quality_daily_workflow:
+        # 1. Infrastructure Setup Job
+        air_quality_infrastructure_setup:
           tasks:
-            - task_key: setup_landing_data
-              existing_cluster_id: 0702-132442-toro5spu
-              notebook_task:
-                base_parameters:
-                  catalog: dbr_dev
-                  schema: valeriimatviiv_bronze
-                  volume: air_quality_landing
-                  custom_landing_path: "/Volumes/dbr_dev/valeriimatviiv_bronze/air_quality_landing"
             - task_key: generate_dim_date
               existing_cluster_id: 0702-132442-toro5spu
               notebook_task:
@@ -207,18 +222,28 @@ targets:
                 base_parameters:
                   catalog: dbr_dev
                   schema: valeriimatviiv_gold
-            - task_key: alerts_monitoring
-              existing_cluster_id: 0702-132442-toro5spu
-              notebook_task:
-                base_parameters:
-                  catalog: dbr_dev
-                  schema: valeriimatviiv_gold
             - task_key: dq_scorecard_and_alerts
               existing_cluster_id: 0702-132442-toro5spu
               notebook_task:
                 base_parameters:
                   catalog: dbr_dev
                   schema: valeriimatviiv_gold
+
+        # 2. Data Loading Pipeline Job
+        air_quality_data_pipeline:
+          tasks:
+            - task_key: setup_landing_data
+              existing_cluster_id: 0702-132442-toro5spu
+              notebook_task:
+                base_parameters:
+                  catalog: dbr_dev
+                  schema: valeriimatviiv_bronze
+                  volume: air_quality_landing
+                  custom_landing_path: "/Volumes/dbr_dev/valeriimatviiv_bronze/air_quality_landing"
+
+        # 3. Quality & Audit Suite Job
+        air_quality_quality_and_audit_suite:
+          tasks:
             - task_key: dq_reconciliation_audit
               existing_cluster_id: 0702-132442-toro5spu
               notebook_task:
@@ -234,7 +259,9 @@ targets:
                 base_parameters:
                   catalog: dbr_dev
                   schema: valeriimatviiv_gold
-
-
-
-
+            - task_key: alerts_monitoring
+              existing_cluster_id: 0702-132442-toro5spu
+              notebook_task:
+                base_parameters:
+                  catalog: dbr_dev
+                  schema: valeriimatviiv_gold
