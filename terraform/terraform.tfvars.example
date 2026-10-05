@@ -1,0 +1,30 @@
+# -----------------------------------------------------------------------------
+# Example Terraform Variables for Azure Databricks Lakehouse
+# Copy this file to terraform.tfvars and fill in your custom values.
+# DO NOT commit real secrets or private values into Git.
+# -----------------------------------------------------------------------------
+
+environment               = "prod"
+project_name              = "airquality"
+azure_region              = "westeurope"
+
+# Leave blank to auto-generate unique names, or override with company naming conventions:
+resource_group_name       = "rg-airquality-prod-westeurope"
+storage_account_name      = "stairqualityprodwe01"
+databricks_workspace_name = "dbw-airquality-prod-westeurope"
+
+# Databricks Pricing Tier (Unity Catalog requires "premium")
+databricks_sku            = "premium"
+
+# Lakehouse Catalog and Schemas (Matching your DAB databricks.yml prod target)
+unity_catalog_name        = "dbr_dev"
+user_bronze_schema        = "valeriimatviiv_bronze"
+user_gold_schema          = "valeriimatviiv_gold"
+
+tags = {
+  Owner       = "Valerii Matviiv"
+  Environment = "prod"
+  ManagedBy   = "Terraform"
+  Project     = "Air Quality Medallion Lakehouse"
+  Internship  = "Lab 8-9 CI/CD Platform Automation"
+}
