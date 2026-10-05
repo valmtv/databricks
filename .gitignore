@@ -1,5 +1,37 @@
+# Python artifacts
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# Environment & Credentials
 .env
+*.pem
+*.key
+terraform.tfvars
+
+# macOS
 .DS_Store
+
+# Agents and local config
 .agents
 skills-lock.json
+
+# Databricks Asset Bundles
+.databricks/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfplan
+*tfplan*
+.terraform.lock.hcl
+terraform/*GUIDE*.md
+Init-prompt.md
