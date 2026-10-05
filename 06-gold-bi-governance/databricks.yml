@@ -112,6 +112,7 @@ targets:
     mode: development
     default: true
     workspace:
+      host: https://dbc-3d34d2aa-8db9.cloud.databricks.com
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
     resources:
       dashboards:
@@ -198,6 +199,16 @@ targets:
           serverless: false
           catalog: dbr_dev
           target: valeriimatviiv_gold
+          clusters:
+            - label: default
+              spark_conf:
+                spark.master: "local[*]"
+                spark.databricks.cluster.profile: "singleNode"
+              custom_tags:
+                ResourceClass: "SingleNode"
+              autoscale:
+                min_workers: 0
+                max_workers: 0
           configuration:
             pipeline.landing_path: "/Volumes/dbr_dev/valeriimatviiv_bronze/air_quality_landing/landing"
       jobs:
@@ -246,6 +257,9 @@ targets:
           tasks:
             - task_key: dq_reconciliation_audit
               existing_cluster_id: 0702-132442-toro5spu
+              libraries:
+                - pypi:
+                    package: databricks-labs-dqx==0.8.0
               notebook_task:
                 base_parameters:
                   catalog: dbr_dev

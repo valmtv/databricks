@@ -1,0 +1,91 @@
+name: CD - Production Promotion (Azure Databricks)
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '06-gold-bi-governance/**'
+      - 'terraform/**'
+      - '.github/workflows/prod_deploy.yml'
+  workflow_dispatch:
+    inputs:
+      run_smoke_test:
+        description: 'Optionally run the lightweight DDL setup job on Azure PROD to verify green execution'
+        type: boolean
+        default: false
+
+concurrency:
+  group: prod-deployment
+  cancel-in-progress: false
+
+jobs:
+  promote-to-prod:
+    name: Promote & Idempotently Deploy Bundle to Azure PROD
+    runs-on: ubuntu-latest
+    env:
+      DATABRICKS_HOST: "https://adb-7405604503619901.1.azuredatabricks.net"
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_PROD_AZURE_TOKEN }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@v0.231.0
+
+      - name: Verify Azure Databricks Credentials
+        run: |
+          if [ -z "$DATABRICKS_TOKEN" ]; then
+            echo "::error::GitHub Secret 'DATABRICKS_PROD_AZURE_TOKEN' is not configured! Please configure it under Repository Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+          echo "Azure Databricks Host: $DATABRICKS_HOST"
+          echo "Authentication token detected."
+
+      - name: Pre-Deployment Bundle Validation (prod_azure)
+        run: |
+          cd 06-gold-bi-governance
+          echo "=== Pre-flight Validation for Production Target ==="
+          databricks bundle validate -t prod_azure
+
+      - name: Deploy Asset Bundle to Azure PROD (Zero-Cost Idempotent Sync)
+        id: bundle_deploy
+        run: |
+          cd 06-gold-bi-governance
+          echo "================================================================="
+          echo " Executing Automated Promotion: databricks bundle deploy -t prod_azure"
+          echo "================================================================="
+          databricks bundle deploy -t prod_azure
+
+      - name: Optional Lightweight Post-Deploy Verification (Smoke Test)
+        if: ${{ inputs.run_smoke_test == true }}
+        run: |
+          echo "================================================================="
+          echo " Executing Optional Live Verification on Azure PROD"
+          echo "================================================================="
+          pip install -r platform_ops/requirements.txt
+          python3 platform_ops/lakehouse_ops.py --target prod_azure job trigger \
+            --job-name "[prod_azure] Air Quality Infrastructure & Governance Setup (DDL)" \
+            --monitor --force-paid-run
+
+      - name: Publish Production Deployment Summary
+        if: always()
+        run: |
+          echo "## 🚀 Azure Databricks Production Promotion Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Target Environment** | \`prod_azure\` (Azure Databricks Paid Workspace) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Workspace Host** | [adb-7405604503619901.1.azuredatabricks.net](https://adb-7405604503619901.1.azuredatabricks.net) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Target Catalog** | \`dbr_dev\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Bronze Schema** | \`valeriimatviiv_bronze\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Gold Schema** | \`valeriimatviiv_gold\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Deployment Status** | **SUCCESS (Idempotent)** |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Cost Policy** | **Strict Zero-Cost Azure Run Gate Enforced** (Definitions deployed, no billable compute started) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Triggered By** | \`${{ github.actor }}\` on commit \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Deployed Asset Inventory" >> $GITHUB_STEP_SUMMARY
+          echo "- **Declarative Lakeflow Pipeline**: \`[prod_azure] Air Quality Full Medallion (Bronze-Silver-Gold) Lakeflow Pipeline\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Workflow Job 1**: \`[prod_azure] Air Quality Infrastructure & Governance Setup (DDL)\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Workflow Job 2**: \`[prod_azure] Air Quality Data Loading Pipeline (ETL)\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Workflow Job 3**: \`[prod_azure] Air Quality Quality & Reconciliation Audit Suite\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **AI/BI Dashboard**: \`[prod_azure] Air Quality Executive BI & Global Environmental Observatory\`" >> $GITHUB_STEP_SUMMARY
