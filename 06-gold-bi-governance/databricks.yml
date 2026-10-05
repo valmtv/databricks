@@ -257,6 +257,9 @@ targets:
           tasks:
             - task_key: dq_reconciliation_audit
               existing_cluster_id: 0702-132442-toro5spu
+              libraries:
+                - pypi:
+                    package: databricks-labs-dqx==0.8.0
               notebook_task:
                 base_parameters:
                   catalog: dbr_dev
