@@ -10,7 +10,11 @@ import os
 import sys
 
 # Add project root to sys.path
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+script_file = globals().get("__file__")
+if script_file:
+    PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(script_file)))
+else:
+    PROJECT_ROOT = os.getcwd()
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 

@@ -25,17 +25,27 @@ def main():
     if args.connect:
         print("[TEST-RUNNER] Databricks Connect mode requested.")
         os.environ["DATABRICKS_CONNECT"] = "1"
+    # Databricks kernel executes scripts via exec(compile(...)) where __file__ is undefined
+    script_path = globals().get("__file__") or (sys.argv[0] if sys.argv and sys.argv[0] else None)
+    if script_path:
+        base_dir = os.path.dirname(os.path.abspath(script_path))
     else:
-        print("[TEST-RUNNER] Running in local pure-python / PySpark mode.")
+        base_dir = os.getcwd()
 
-    tests_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tests")
+    tests_dir = os.path.join(base_dir, "tests")
+    if not os.path.isdir(tests_dir):
+        tests_dir = os.path.abspath("tests")
+
+    print(f"[TEST-RUNNER] Discovering tests in: {tests_dir}")
     loader = unittest.TestLoader()
     suite = loader.discover(start_dir=tests_dir, pattern="test_*.py")
 
-    runner = unittest.TextTestRunner(verbosity=2 if args.verbose or True else 1)
+    runner = unittest.TextTestRunner(verbosity=2 if args.verbose else 1)
     result = runner.run(suite)
 
-    sys.exit(0 if result.wasSuccessful() else 1)
+    if not result.wasSuccessful():
+        raise RuntimeError(f"Tests failed: {len(result.failures)} failures, {len(result.errors)} errors")
+    print("[TEST-RUNNER] All tests passed successfully!")
 
 
 if __name__ == "__main__":
