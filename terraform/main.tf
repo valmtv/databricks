@@ -172,6 +172,14 @@ resource "databricks_schema" "bronze_schema" {
   force_destroy = false
 }
 
+# Silver Schema for Cleaned & Enriched Telemetry
+resource "databricks_schema" "silver_schema" {
+  catalog_name  = databricks_catalog.lakehouse_catalog.id
+  name          = var.user_silver_schema
+  comment       = "Silver layer for cleansed, validated, and conformed air quality observations"
+  force_destroy = false
+}
+
 # Gold Schema for Analytics & BI Presentation
 resource "databricks_schema" "gold_schema" {
   catalog_name  = databricks_catalog.lakehouse_catalog.id

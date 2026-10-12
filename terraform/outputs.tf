@@ -43,6 +43,11 @@ output "bronze_schema_name" {
   value       = "${databricks_catalog.lakehouse_catalog.name}.${databricks_schema.bronze_schema.name}"
 }
 
+output "silver_schema_name" {
+  description = "Full path of Silver schema"
+  value       = "${databricks_catalog.lakehouse_catalog.name}.${databricks_schema.silver_schema.name}"
+}
+
 output "gold_schema_name" {
   description = "Full path of Gold schema"
   value       = "${databricks_catalog.lakehouse_catalog.name}.${databricks_schema.gold_schema.name}"

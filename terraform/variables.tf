@@ -52,6 +52,12 @@ variable "user_bronze_schema" {
   default     = "valeriimatviiv_bronze"
 }
 
+variable "user_silver_schema" {
+  description = "Silver schema name for cleansed and conformed tables"
+  type        = string
+  default     = "valeriimatviiv_silver"
+}
+
 variable "user_gold_schema" {
   description = "Gold schema name for star-schema dimensional models"
   type        = string
