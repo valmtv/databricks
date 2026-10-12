@@ -82,8 +82,10 @@ jobs:
         if: ${{ secrets.DATABRICKS_PROD_AZURE_TOKEN == '' && secrets.DATABRICKS_TOKEN == '' }}
         run: |
           echo "=== Target: prod_azure validation notice ==="
-          echo "[INFO] Skipped live prod_azure workspace validation in PR CI because 'DATABRICKS_PROD_AZURE_TOKEN' is not configured in GitHub Secrets."
-          echo "[INFO] Asset bundle definitions and local deployment were validated directly."
+          echo "[INFO] Skipped live prod_azure workspace validation in PR CI."
+          echo "[INFO] Note: Personal Access Tokens (PATs) are disabled by organization policy in the academy workspace."
+          echo "[INFO] Live deployments and operations authenticate interactively via Databricks CLI OAuth (U2M)."
+          echo "[INFO] Asset bundle definitions, pure transformations, and Terraform IaC were validated successfully."
 
   # ---------------------------------------------------------------------------
   # Gate 3: Terraform Infrastructure as Code Syntax & Configuration Check
