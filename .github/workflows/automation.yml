@@ -1,0 +1,37 @@
+name: Automation (Lab 9 Platform Orchestrator)
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_name:
+        description: 'Workflow job name to execute on Azure PROD'
+        required: false
+        default: '[prod_azure] Air Quality Infrastructure & Governance Setup (DDL)'
+
+jobs:
+  orchestrator:
+    name: Run Databricks Platform Orchestrator
+    runs-on: ubuntu-latest
+    env:
+      DATABRICKS_HOST: "https://adb-7405604503619901.1.azuredatabricks.net"
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_PROD_AZURE_TOKEN }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Databricks Automation Dependencies
+        run: |
+          pip install "typer>=0.12" "databricks-sdk>=0.20" "rich>=13.0"
+
+      - name: Run orchestrator.py (Ensure GP1 & Execute Job)
+        run: |
+          echo "================================================================="
+          echo " Executing Lab 9 Orchestrator on Azure PROD"
+          echo " Job: ${{ github.event.inputs.job_name || '[prod_azure] Air Quality Infrastructure & Governance Setup (DDL)' }}"
+          echo "================================================================="
+          python3 platform_ops/orchestrator.py run --target prod_azure --job "${{ github.event.inputs.job_name || '[prod_azure] Air Quality Infrastructure & Governance Setup (DDL)' }}"
