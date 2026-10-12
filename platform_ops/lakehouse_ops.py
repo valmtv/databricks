@@ -243,6 +243,110 @@ def cmd_pipeline_trigger(client: PlatformClient, args):
         sys.exit(1)
 
 
+def cmd_ensure_compute(client: PlatformClient, args):
+    """Ensure shared cluster (e.g. GP1 on Azure PROD) is running; start it if terminated."""
+    try:
+        cluster = client.ensure_compute(cluster_id=args.cluster_id)
+        headers = ["Property", "Value"]
+        rows = [
+            ["Cluster ID", cluster.get("cluster_id")],
+            ["Cluster Name", cluster.get("cluster_name")],
+            ["State", cluster.get("state")],
+            ["Node Type", cluster.get("node_type_id")],
+            ["Auto-Terminate", f"{cluster.get('autotermination_minutes', 'N/A')} min"]
+        ]
+        print_table(headers, rows)
+        print("✅ Cluster is RUNNING and ready for execution.")
+    except Exception as e:
+        print(f"❌ Failed to ensure compute: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_run(client: PlatformClient, args):
+    """End-to-End run: Ensure compute, trigger job, stream progress, and print report."""
+    try:
+        # Step 1: Ensure compute if targeting prod_azure
+        if client.target == "prod_azure":
+            print("[*] Ensuring GP1 compute cluster is running before job execution...")
+            client.ensure_compute(cluster_id=args.cluster_id)
+
+        # Step 2: Resolve job name
+        job_name = args.job
+        if not job_name:
+            if not sys.stdin.isatty():
+                print("❌ No --job provided and no interactive terminal (CI). Aborting.", file=sys.stderr)
+                sys.exit(1)
+            jobs = client.list_jobs()
+            print("Available jobs:")
+            for j in jobs:
+                print(f"  - {j.get('settings', {}).get('name')}")
+            job_name = input("Enter job name to run: ").strip()
+
+        print(f"[*] Triggering workflow job: '{job_name}'...")
+        run_id = client.trigger_job(job_name=job_name)
+        print(f"🚀 Job triggered! Run ID: {run_id}")
+
+        # Step 3: Monitor run
+        run_data = client.monitor_run(run_id, timeout_seconds=args.timeout)
+        state = run_data.get("state", {})
+        result_state = state.get("result_state", "N/A")
+
+        # Step 4: Print report table
+        headers = ["Report Field", "Value"]
+        rows = [
+            ["Job Name", job_name],
+            ["Run ID", str(run_id)],
+            ["Target Workspace", client.target],
+            ["Life Cycle State", state.get("life_cycle_state")],
+            ["Result State", result_state],
+            ["Run Page URL", run_data.get("run_page_url", "N/A")]
+        ]
+        print_table(headers, rows)
+
+        if result_state != "SUCCESS":
+            sys.exit(1)
+    except Exception as e:
+        print(f"❌ Run failed: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_start_pipeline_workflow(client: PlatformClient, args):
+    """Trigger a Lakeflow pipeline update by name and poll until completed."""
+    try:
+        pipeline_name = args.pipeline_name
+        pipeline_id = args.pipeline_id
+
+        if not pipeline_id and pipeline_name:
+            matches = client.list_pipelines(name_filter=pipeline_name)
+            if not matches:
+                raise ValueError(f"No pipeline found matching '{pipeline_name}'")
+            pipeline_id = matches[0]["pipeline_id"]
+            pipeline_name = matches[0].get("name", pipeline_name)
+
+        if not pipeline_id:
+            raise ValueError("Must provide --pipeline-name or --pipeline-id")
+
+        print(f"[*] Triggering pipeline: '{pipeline_name}' (ID: {pipeline_id})...")
+        update_id = client.trigger_pipeline(pipeline_id, full_refresh=args.full_refresh)
+        print(f"🚀 Pipeline update started! Update ID: {update_id}")
+
+        final_state = client.monitor_pipeline_update(pipeline_id, update_id, timeout_seconds=args.timeout)
+        headers = ["Pipeline Field", "Value"]
+        rows = [
+            ["Pipeline Name", pipeline_name],
+            ["Pipeline ID", pipeline_id],
+            ["Update ID", update_id],
+            ["Final State", final_state]
+        ]
+        print_table(headers, rows)
+
+        if final_state != "COMPLETED":
+            sys.exit(1)
+    except Exception as e:
+        print(f"❌ Pipeline run failed: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="lakehouse-ops",
@@ -266,6 +370,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     # check-env
     subparsers.add_parser("check-env", help="Verify API authentication and workspace connectivity")
+
+    # ensure-compute (Academy reference command)
+    ec_parser = subparsers.add_parser("ensure-compute", help="Ensure shared cluster (GP1) is running")
+    ec_parser.add_argument("--cluster-id", default=None, help="Specific cluster ID to check/start (defaults to GP1)")
+
+    # run (Academy reference command)
+    run_parser = subparsers.add_parser("run", help="Orchestrate end-to-end: ensure compute, run job, report")
+    run_parser.add_argument("--job", default=None, help="Job name to run (skips interactive prompt in CI)")
+    run_parser.add_argument("--cluster-id", default=None, help="Cluster ID to ensure (defaults to GP1 on prod_azure)")
+    run_parser.add_argument("--timeout", type=int, default=1800, help="Run timeout in seconds (default: 1800)")
+
+    # start-pipeline (Academy reference command)
+    sp_parser = subparsers.add_parser("start-pipeline", help="Trigger and monitor a Lakeflow declarative pipeline")
+    sp_parser.add_argument("--pipeline-name", default=None, help="Pipeline name")
+    sp_parser.add_argument("--pipeline-id", default=None, help="Pipeline ID")
+    sp_parser.add_argument("--full-refresh", action="store_true", help="Trigger full recomputation")
+    sp_parser.add_argument("--timeout", type=int, default=1800, help="Monitoring timeout in seconds")
 
     # cluster
     cluster_parser = subparsers.add_parser("cluster", help="Manage cluster lifecycle")
@@ -327,6 +448,12 @@ def main():
 
     if args.command == "check-env":
         cmd_check_env(client, args)
+    elif args.command == "ensure-compute":
+        cmd_ensure_compute(client, args)
+    elif args.command == "run":
+        cmd_run(client, args)
+    elif args.command == "start-pipeline":
+        cmd_start_pipeline_workflow(client, args)
     elif args.command == "cluster":
         if args.subcommand == "list":
             cmd_cluster_list(client, args)

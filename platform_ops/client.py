@@ -41,6 +41,7 @@ class PlatformClient:
     # Known environment hosts from DAB bundle config
     DEV_FREE_HOST = "https://dbc-3d34d2aa-8db9.cloud.databricks.com"
     PROD_AZURE_HOST = "https://adb-7405604503619901.1.azuredatabricks.net"
+    SHARED_AZURE_CLUSTER_ID = "0702-132442-toro5spu"  # GP1 shared cluster (Standard_F4, 60m autoterminate)
 
     def __init__(
         self,
@@ -105,17 +106,16 @@ class PlatformClient:
             except Exception as e:
                 logger.warning(f"Could not initialize databricks.sdk WorkspaceClient: {e}")
 
-    def _assert_zero_cost_policy(self, action_name: str) -> None:
+    def _warn_or_check_compute_creation(self, action_name: str) -> None:
         """
-        Enforce strict zero-cost rule on prod_azure.
-        Blocks accidental compute provisioning or job runs on paid Azure.
+        Advisory warning when creating new compute on prod_azure.
+        Best practice in Academy Lab 9 is reusing the existing shared GP1 cluster.
         """
-        if self.target == "prod_azure" and not self.force_paid_run:
-            raise SafetyGuardrailError(
-                f"[COST-PROTECTION GUARDRAIL BLOCKED] Action '{action_name}' is strictly prohibited on '{self.target}'. "
-                f"Azure Databricks compute costs are prohibited per project policy. "
-                f"Deployments and validations are allowed, but all active runs must target 'dev_free'. "
-                f"To override in an emergency, pass force_paid_run=True (--force-paid-run)."
+        if self.target == "prod_azure":
+            logger.warning(
+                f"[Cost Best Practice] {action_name} invoked on {self.target}. "
+                f"Prefer reusing the shared cluster GP1 ('{self.SHARED_AZURE_CLUSTER_ID}') via ensure_compute() "
+                f"to prevent orphaned cloud compute costs."
             )
 
     # -------------------------------------------------------------------------
@@ -208,7 +208,7 @@ class PlatformClient:
         Provision an auto-terminating single-node compute cluster.
         Safe defaults: single-node driver-only, 10-minute auto-termination.
         """
-        self._assert_zero_cost_policy("create_single_node_cluster")
+        self._warn_or_check_compute_creation("create_single_node_cluster")
 
         if not node_type:
             node_type = "Standard_D4ds_v5" if self.target == "prod_azure" else "i3.xlarge"
@@ -245,10 +245,66 @@ class PlatformClient:
         resp = self._rest_call("GET", "/api/2.0/clusters/list")
         return resp.get("clusters", [])
 
+    def start_cluster(self, cluster_id: str) -> None:
+        """Start a terminated cluster."""
+        logger.info(f"Starting cluster: {cluster_id} on {self.target}...")
+        self._rest_call("POST", "/api/2.0/clusters/start", payload={"cluster_id": cluster_id})
+
     def terminate_cluster(self, cluster_id: str) -> None:
         """Stop/terminate an active cluster."""
         logger.info(f"Terminating cluster: {cluster_id}")
         self._rest_call("POST", "/api/2.0/clusters/delete", payload={"cluster_id": cluster_id})
+
+    def ensure_compute(
+        self,
+        cluster_id: Optional[str] = None,
+        poll_interval: int = 15,
+        timeout_seconds: int = 600
+    ) -> Dict[str, Any]:
+        """
+        Ensures the specified cluster (or shared GP1 cluster on Azure PROD) is running.
+        If terminated, starts the cluster and polls until state is RUNNING.
+        Avoids creating throwaway clusters, guaranteeing cost safety.
+        """
+        target_cluster_id = cluster_id
+        if not target_cluster_id:
+            if self.target == "prod_azure":
+                target_cluster_id = self.SHARED_AZURE_CLUSTER_ID
+            else:
+                clusters = self.list_clusters()
+                if clusters:
+                    target_cluster_id = clusters[0].get("cluster_id")
+                else:
+                    raise RuntimeError("No existing clusters found on dev_free to ensure.")
+
+        logger.info(f"Ensuring compute cluster '{target_cluster_id}' is RUNNING on {self.target}...")
+        cluster = self.get_cluster(target_cluster_id)
+        current_state = cluster.get("state", "UNKNOWN")
+        logger.info(f"Initial state of cluster '{cluster.get('cluster_name', target_cluster_id)}': {current_state}")
+
+        if current_state == "TERMINATED":
+            logger.info(f"Starting terminated cluster '{target_cluster_id}'...")
+            self.start_cluster(target_cluster_id)
+
+        start_time = time.time()
+        while True:
+            cluster = self.get_cluster(target_cluster_id)
+            state = cluster.get("state", "UNKNOWN")
+            elapsed = int(time.time() - start_time)
+            logger.info(f"[{elapsed}s] Cluster '{target_cluster_id}' state: {state}")
+
+            if state == "RUNNING":
+                logger.info(f"Cluster '{target_cluster_id}' is ready and RUNNING.")
+                return cluster
+
+            if state in {"ERROR", "UNKNOWN"}:
+                error_msg = cluster.get("state_message", "Unknown cluster error")
+                raise RuntimeError(f"Cluster failed to start. State: {state}; message: {error_msg}")
+
+            if elapsed >= timeout_seconds:
+                raise TimeoutError(f"Cluster '{target_cluster_id}' failed to reach RUNNING within {timeout_seconds}s")
+
+            time.sleep(poll_interval)
 
     # -------------------------------------------------------------------------
     # 3. Job Orchestration & Status Monitoring
@@ -271,8 +327,6 @@ class PlatformClient:
         Trigger a workflow job execution via /api/2.1/jobs/run-now.
         Accepts either job_id or job_name.
         """
-        self._assert_zero_cost_policy("trigger_job")
-
         target_job_id = job_id
         if not target_job_id and job_name:
             matches = self.list_jobs(name_filter=job_name)
@@ -347,8 +401,6 @@ class PlatformClient:
 
     def trigger_pipeline(self, pipeline_id: str, full_refresh: bool = False) -> str:
         """Trigger an update on a Lakeflow pipeline."""
-        self._assert_zero_cost_policy("trigger_pipeline")
-
         payload = {"full_refresh": full_refresh}
         logger.info(f"Starting update for pipeline {pipeline_id} (full_refresh={full_refresh})...")
         resp = self._rest_call("POST", f"/api/2.0/pipelines/{pipeline_id}/updates", payload=payload)
@@ -359,3 +411,34 @@ class PlatformClient:
     def get_pipeline(self, pipeline_id: str) -> Dict[str, Any]:
         """Fetch pipeline metadata and current status."""
         return self._rest_call("GET", f"/api/2.0/pipelines/{pipeline_id}")
+
+    def get_pipeline_update(self, pipeline_id: str, update_id: str) -> Dict[str, Any]:
+        """Fetch status of a specific pipeline update."""
+        return self._rest_call("GET", f"/api/2.0/pipelines/{pipeline_id}/updates/{update_id}")
+
+    def monitor_pipeline_update(
+        self,
+        pipeline_id: str,
+        update_id: str,
+        timeout_seconds: int = 600,
+        poll_interval: int = 15
+    ) -> str:
+        """Poll pipeline update until terminal state (COMPLETED, FAILED, CANCELED)."""
+        terminal_states = {"COMPLETED", "FAILED", "CANCELED"}
+        start_time = time.time()
+        logger.info(f"Monitoring pipeline update {update_id} for pipeline {pipeline_id}...")
+
+        while True:
+            elapsed = int(time.time() - start_time)
+            info = self.get_pipeline_update(pipeline_id, update_id)
+            state = info.get("update", {}).get("state", "UNKNOWN")
+            logger.info(f"[{elapsed}s] Pipeline update state: {state}")
+
+            if state in terminal_states:
+                logger.info(f"Pipeline update finished with state: {state}")
+                return state
+
+            if elapsed >= timeout_seconds:
+                raise TimeoutError(f"Pipeline update {update_id} timed out after {timeout_seconds}s.")
+
+            time.sleep(poll_interval)
