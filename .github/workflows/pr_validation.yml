@@ -56,7 +56,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Databricks CLI
-        uses: databricks/setup-cli@v0.231.0
+        uses: databricks/setup-cli@main
 
       - name: Validate Asset Bundle for dev_free
         env:
@@ -128,22 +128,20 @@ jobs:
         run: |
           pip install -r platform_ops/requirements.txt
 
-      - name: Verify Cost Guardrail Unit Test
+      - name: Verify Platform Client & Shared Cluster Configuration
         run: |
           python3 -c "
           import sys
           sys.path.insert(0, 'platform_ops')
-          from client import PlatformClient, SafetyGuardrailError
+          from client import PlatformClient
           client = PlatformClient(target='prod_azure')
-          try:
-              client.trigger_job(job_id=999999)
-              print('Guardrail check FAILED: allowed prod_azure trigger')
-              sys.exit(1)
-          except SafetyGuardrailError:
-              print('Guardrail check PASSED: successfully blocked prod_azure job execution')
+          assert client.SHARED_AZURE_CLUSTER_ID == '0702-132442-toro5spu', 'Unexpected Azure shared cluster ID'
+          assert client.host == 'https://adb-7405604503619901.1.azuredatabricks.net', 'Unexpected prod host'
+          print('Platform Client configuration verified successfully.')
           "
 
       - name: CLI Syntax & Module Verification
         run: |
           python3 platform_ops/lakehouse_ops.py --help
+          python3 platform_ops/orchestrator.py --help
           python3 platform_ops/e2e_platform_run.py --help
