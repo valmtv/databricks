@@ -12,11 +12,11 @@ resource "random_string" "suffix" {
 }
 
 locals {
-  name_prefix       = "${var.project_name}-${var.environment}"
-  resource_group    = var.resource_group_name != "" ? var.resource_group_name : "rg-${local.name_prefix}-${var.azure_region}"
-  storage_account   = var.storage_account_name != "" ? var.storage_account_name : substr("st${var.project_name}${var.environment}${random_string.suffix.result}", 0, 24)
-  workspace_name    = var.databricks_workspace_name != "" ? var.databricks_workspace_name : "dbw-${local.name_prefix}"
-  key_vault_name    = substr("kv-${var.project_name}-${var.environment}-${random_string.suffix.result}", 0, 24)
+  name_prefix     = "${var.project_name}-${var.environment}"
+  resource_group  = var.resource_group_name != "" ? var.resource_group_name : "rg-${local.name_prefix}-${var.azure_region}"
+  storage_account = var.storage_account_name != "" ? var.storage_account_name : substr("st${var.project_name}${var.environment}${random_string.suffix.result}", 0, 24)
+  workspace_name  = var.databricks_workspace_name != "" ? var.databricks_workspace_name : "dbw-${local.name_prefix}"
+  key_vault_name  = substr("kv-${var.project_name}-${var.environment}-${random_string.suffix.result}", 0, 24)
 }
 
 # -----------------------------------------------------------------------------
@@ -94,13 +94,13 @@ resource "azurerm_role_assignment" "access_connector_blob_contributor" {
 # 4. Azure Key Vault (Secrets Management for CI/CD & Workspace Credentials)
 # -----------------------------------------------------------------------------
 resource "azurerm_key_vault" "kv" {
-  name                        = local.key_vault_name
-  location                    = azurerm_resource_group.this.location
-  resource_group_name         = azurerm_resource_group.this.name
-  tenant_id                   = data.azurerm_client_config.current.tenant_id
-  sku_name                    = "standard"
-  soft_delete_retention_days  = 7
-  purge_protection_enabled    = false
+  name                       = local.key_vault_name
+  location                   = azurerm_resource_group.this.location
+  resource_group_name        = azurerm_resource_group.this.name
+  tenant_id                  = data.azurerm_client_config.current.tenant_id
+  sku_name                   = "standard"
+  soft_delete_retention_days = 7
+  purge_protection_enabled   = false
 
   access_policy {
     tenant_id = data.azurerm_client_config.current.tenant_id
@@ -182,9 +182,9 @@ resource "databricks_schema" "gold_schema" {
 
 # Unity Catalog Volume for File Landing (CSV / JSON telemetry drops)
 resource "databricks_volume" "landing_volume" {
-  name             = "air_quality_landing"
-  catalog_name     = databricks_catalog.lakehouse_catalog.id
-  schema_name      = databricks_schema.bronze_schema.name
-  volume_type      = "MANAGED"
-  comment          = "Managed volume for landing incoming sensor telemetry payloads"
+  name         = "air_quality_landing"
+  catalog_name = databricks_catalog.lakehouse_catalog.id
+  schema_name  = databricks_schema.bronze_schema.name
+  volume_type  = "MANAGED"
+  comment      = "Managed volume for landing incoming sensor telemetry payloads"
 }
